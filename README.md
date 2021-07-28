@@ -1,33 +1,26 @@
 # cloudmetrics
 
-> **NOTE**: this repository is currently undergoing refactoring to make
-the routines implemented more accessible by external tools and to ensure
-consistency. The version published in Janssens et al 2021 is [available
-tagged as version
-v0.1.0](https://github.com/cloudsci/cloudmetrics/tree/v0.1.0). Progress on
-the refactoring can be followed in issue
-https://github.com/cloudsci/cloudmetrics/issues/20
+Data processing pipeline for the
+[cloudmetrics](https://github.com/cloudsci/cloudmetrics) package.
 
-The `cloudmetrics` package contains python routines to compute metrics
-from 2D cloud fields to characterise cloud patterns in these fields. Most
-methods operate on a `cloud-mask` (i.e. a boolean true-false field)
-indicating where clouds exist.
+**NOTE**: the documentation below is currently evolving
 
-# Installation
+Using the pipeline is comprised of three steps
 
-Until `cloudmetrics` appears on pipy the package can be installed directly
-from github
+1. (Optionally downloading) and checking the source data, and from this
+   generating the scene IDs (see below)
 
-```bash
-$> pip install git+https://github.com/cloudsci/cloudmetrics
-```
+2. Computing the metrics
 
-# Usage
 
-To use the `cloudmetrics` package simply import `cloudmetrics` and use the metric function you are interested in:
+## Source data formats
 
-```python
-import cloudmetrics
-
-iorg = cloudmetrics.iorg(cloud_mask=da_cloudmask)
-```
+The cloud metrics pipeline operates on data directories containing 2D
+datasets, either stored as images (`.jpeg`, `.png`) or as netCDF files
+(`.nc`). A dataset is assumed to be comprised of multiple "scenes" each
+with a unique `scene_id`. For image-files the scene id will be defined as
+the filename without the file extension (i.e. `{scene_id}.png`) and for
+netCDF files the scene id will either use the `scene_id` variable (if it
+exist) or will be generated from the `time` coordinate (with the format
+"YYYYMMDDhhmm"). For netCDF files either the `scene_id` variable or `time`
+coordinate must exist.
