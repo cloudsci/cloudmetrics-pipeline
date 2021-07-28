@@ -1,4 +1,4 @@
-import cloudmetrics
+import cloudmetrics_pipeline as cm_pipeline
 
 
 def test_dummy():
