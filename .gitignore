@@ -5,3 +5,4 @@ __pyache__/
 .eggs/
 
 .*.sw*
+scene_ids.yml

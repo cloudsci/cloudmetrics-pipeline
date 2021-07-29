@@ -101,14 +101,8 @@ def make_scenes(data_path):
     return scenes
 
 
-@click.command()
-@click.option("--data-path", type=Path, default=Path("."))
 def produce_scene_ids(data_path, dst_filename="scene_ids.yml"):
     scenes = make_scenes(data_path=data_path)
 
     with open(dst_filename, "w") as fh:
         yaml.dump(scenes, fh, default_flow_style=False)
-
-
-if __name__ == "__main__":
-    produce_scene_ids()
