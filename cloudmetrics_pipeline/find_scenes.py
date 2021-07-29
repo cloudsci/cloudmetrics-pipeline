@@ -4,13 +4,12 @@ import xarray as xr
 import skimage
 import skimage.io
 
-import click
-
 
 FILETYPES = dict(image=["png", "jpg", "jpeg"], netcdf=["nc", "nc4"])
 
 DATETIME_FORMAT = "%Y%d%m%H%M"
 SCENE_PATH = "scenes"
+SCENE_DB_FILENAME = "scene_ids.yml"
 
 
 class NoReplaceDict(dict):
@@ -122,14 +121,18 @@ def make_scenes(data_path):
     return scenes
 
 
-@click.command()
-@click.option("--data-path", default=".", type=Path)
-def produce_scene_ids(data_path, dst_filename="scene_ids.yml"):
+def produce_scene_ids(data_path, dst_filename=SCENE_DB_FILENAME):
     scenes = make_scenes(data_path=data_path)
 
     with open(data_path / SCENE_PATH / dst_filename, "w") as fh:
         yaml.dump(scenes, fh, default_flow_style=False)
 
 
-if __name__:
-    produce_scene_ids()
+if __name__ == "__main__":
+    import argparse
+
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("--data-path", default=".", type=Path)
+    args = argparser.parse_args()
+
+    produce_scene_ids(**vars(args))
