@@ -1,12 +1,16 @@
 import yaml
 from pathlib import Path
 import xarray as xr
+import skimage
+import skimage.io
 
 import click
+
 
 FILETYPES = dict(image=["png", "jpg", "jpeg"], netcdf=["nc", "nc4"])
 
 DATETIME_FORMAT = "%Y%d%m%H%M"
+SCENE_PATH = "scenes"
 
 
 class NoReplaceDict(dict):
@@ -22,6 +26,22 @@ class NoReplaceDict(dict):
         if key in self:
             raise self.KeyExistsException(key)
         dict.__setitem__(self, key, val)
+
+
+def _make_image_scene(filepath, greyscale_threshold=0.2):
+    """
+    Create a cloud-mask netCDF file from an image using the `greyscale_threshold`
+    """
+    # TODO: make `greyscale_threshold` configurable from some external parameter
+    scene_id = filepath.stem
+    image = skimage.io.imread(filepath)
+    image_grey = skimage.color.rgb2gray(image)
+    cloud_mask = image_grey > greyscale_threshold
+    da = xr.DataArray(cloud_mask)
+    filepath_scene = Path(filepath).parent / SCENE_PATH / f"{scene_id}.nc"
+    filepath_scene.parent.mkdir(exist_ok=True, parents=True)
+    da.to_netcdf(filepath_scene)
+    return scene_id, filepath_scene
 
 
 def _make_netcdf_scenes(filepath):
@@ -50,7 +70,8 @@ def _make_netcdf_scenes(filepath):
 
     for scene_id, da_scene in _individual_scenes_in_file():
         filename_scene = f"{scene_id}.nc"
-        filepath_scene = filepath.parent / filename_scene
+        filepath_scene = filepath.parent / SCENE_PATH / filename_scene
+        filename_scene.parent.mkdir(exist_ok=True, parents=True)
         da_scene.to_netcdf(filepath_scene)
         scenes[scene_id] = filepath_scene
 
@@ -85,8 +106,8 @@ def make_scenes(data_path):
     for filetype, filepaths in filepaths_by_filetype.items():
         if filetype == "image":
             for filepath in filepaths:
-                scene_id = filepath.stem
-                scenes[scene_id] = filepath
+                scene_id, filepath_scene = _make_image_scene(filepath=filepath)
+                scenes[scene_id] = filepath_scene
         elif filetype == "netcdf":
             for filepath in filepaths:
                 scenes.update(_make_netcdf_scenes(filepath=filepath))
@@ -101,8 +122,14 @@ def make_scenes(data_path):
     return scenes
 
 
+@click.command()
+@click.option("--data-path", default=".", type=Path)
 def produce_scene_ids(data_path, dst_filename="scene_ids.yml"):
     scenes = make_scenes(data_path=data_path)
 
-    with open(dst_filename, "w") as fh:
+    with open(data_path / SCENE_PATH / dst_filename, "w") as fh:
         yaml.dump(scenes, fh, default_flow_style=False)
+
+
+if __name__:
+    produce_scene_ids()

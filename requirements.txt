@@ -1,3 +1,5 @@
 xarray
 numpy
 pyyaml
+# until we have cloudmetrics on pip we will install directly from github
+git+https://github.com/cloudsci/cloudmetrics#egg=cloudmetrics
