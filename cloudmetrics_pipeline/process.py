@@ -46,13 +46,10 @@ def _load_scene_ids(data_path):
         return scenes
 
 
-def _compute_metrics_on_cloudmask(da_cloudmask, metrics):
-    ds_metrics = xr.Dataset()
-    for metric in metrics:
-        fn_metric = getattr(cloudmetrics, metric)
-        metric_value = fn_metric(cloud_mask=da_cloudmask.values)
-        ds_metrics[metric] = metric_value
-    return ds_metrics
+def _compute_metric_on_cloudmask(da_cloudmask, metric):
+    fn_metric = getattr(cloudmetrics, metric)
+    metric_value = fn_metric(cloud_mask=da_cloudmask.values)
+    return xr.DataArray(metric_value)
 
 
 class SourceFile(luigi.Task):
@@ -81,8 +78,14 @@ class PipelineStep(luigi.Task):
     @property
     def identifier(self):
         parts = [self.kind]
-        if len(self.parameters) > 0:
-            param_str = "_".join(f"{k}={v}" for (k, v) in self.parameters.items())
+
+        # avoid putting `metric_metric=iorg` in identifier, rather have `metric_iorg`
+        params = dict(self.parameters)
+        if self.kind in params:
+            parts.append(params.pop(self.kind)[0])
+
+        if len(params) > 0:
+            param_str = "_".join(f"{k}={v}" for (k, v) in params.items())
             parts.append(param_str)
         if self.fn is not None:
             parts.append(self.fn.__name__)
@@ -104,7 +107,7 @@ class PipelineStep(luigi.Task):
                     da = self.fn(da_scene=ds_or_da, **self.parameters)
                 else:
                     da = self.fn(ds_scene=ds_or_da, **self.parameters)
-        elif self.kind == "metrics":
+        elif self.kind == "metric":
             if isinstance(ds_or_da, xr.DataArray):
                 da = ds_or_da
                 if da.dtype == np.bool:
@@ -124,8 +127,8 @@ class PipelineStep(luigi.Task):
                 else:
                     raise NotImplementedError(da.dtype)
                 da_cloudmask = ds_or_da.astype(bool)
-                da = _compute_metrics_on_cloudmask(
-                    da_cloudmask=da_cloudmask, metrics=self.parameters["metrics"]
+                da = _compute_metric_on_cloudmask(
+                    da_cloudmask=da_cloudmask, metric=self.parameters["metric"]
                 )
             else:
                 raise Exception(
@@ -217,8 +220,21 @@ class CloudmetricPipeline:
             for step in self._steps:
                 tasks = []
                 for parent_task in parent_tasks:
-                    task = PipelineStep(parent=parent_task, debug=debug, **step)
-                    tasks.append(task)
+                    if step["kind"] == "metrics":
+                        # shorthand which compute more than one metric, but we
+                        # want to queue more than one task for this
+                        for metric in step["parameters"]["metrics"]:
+                            parameters = dict(metric=metric)
+                            task = PipelineStep(
+                                parent=parent_task,
+                                debug=debug,
+                                kind="metric",
+                                parameters=parameters,
+                            )
+                            tasks.append(task)
+                    else:
+                        task = PipelineStep(parent=parent_task, debug=debug, **step)
+                        tasks.append(task)
                 parent_tasks = tasks
 
         _ = self._run_tasks(tasks=tasks, parallel_tasks=parallel_tasks)
