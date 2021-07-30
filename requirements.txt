@@ -1,3 +1,4 @@
+luigi
 xarray
 numpy
 pyyaml
