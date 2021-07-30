@@ -1,98 +1,77 @@
-import urllib.request
-import os
-import pandas as pd
+import datetime
+from pathlib import Path
+import dateutil
+import pytz
+
+from ..scene_extraction import DATETIME_FORMAT
+from .sources.worldview import download_rgb_image as worldview_rgb_dl
+from ..process import CloudmetricPipeline
 
 
-def downloadMODISImgs(
-    startDate,
-    endDate,
-    extent,
-    savePath,
-    satellite="Aqua",
-    lon2pix=111.4,
-    lat2pix=111,
-    exist_skip=False,
-    var="CorrectedReflectance_TrueColor",
-    filetype="jpeg",
+def _parse_utc_timedate(s):
+    d = dateutil.parser.parse(s)
+    return d.replace(tzinfo=pytz.utc)
+
+
+def download_MODIS_RGB_scenes(
+    start_date,
+    end_date,
+    bbox,
+    data_path,
+    image_format="png",
+    satellites=["Terra", "Aqua"],
 ):
+    dt = datetime.timedelta(days=1)
 
+    t = _parse_utc_timedate(start_date)
+
+    file_paths = []
+    while t < _parse_utc_timedate(end_date):
+        for satellite in satellites:
+            filename = f"{t.strftime(DATETIME_FORMAT)}_{satellite}.{image_format}"
+            filepath = Path(data_path) / filename
+
+            if not filepath.exists():
+                worldview_rgb_dl(
+                    filepath=filepath,
+                    time=t,
+                    bbox=bbox,
+                    satellite=f"MODIS_{satellite}",
+                    image_format=image_format,
+                )
+
+            file_paths.append(filepath)
+            t += dt
+
+    return file_paths
+
+
+def modis_rgb_pipeline(
+    start_date,
+    end_date,
+    bbox,
+    data_path=".",
+    image_format="png",
+    satellites=["Terra", "Aqua"],
+):
     """
-    Download images from NASA Worldview (https://worldview.earthdata.nasa.gov/)
-    using direct urllib retrieval.
+    Start a pipeline by fetching MODIS true-colour RGB images from NASA WorldView
 
-    Input
-    -----
-    startDate  : First date to download an image from
-    endDate    : Last date to download an image from
-    extent     : Longitude and latitude range to subset.
-                 Use convention [lonMin, lonMax, latMin, latMax]
-    savePath   : Path where to store downloaded images
-    satellite  : Which satellite to retrieve images from.
-                 Options are {'Aqua', 'Terra'}.
-    lon2pix    : Conversion factor from a degree of longitude to a pixel
-    lat2pix    : Conversion factor from a degree of latitude to a pixel
-    exist_skip : Skip images that already exist in savePath
-    var        : Worldview layer to download.
-                 Defaults to True Corrected Reflectance.
-    filetype   : File type to store image in. Defaults to .jpeg
-
+    start_date:     starting date
+    end_date:       end date
+    bbox:           bounding-box in WESN format
+    data_path:      path where downloaded files will be stored
+    image_format:   filetype of downloaded files
+    satellites:     list of satellite to download data for (Terra and/or Aqua)
     """
 
-    lon1 = extent[0]
-    lon2 = extent[1]
-    lat1 = extent[2]
-    lat2 = extent[3]
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    loc = f"&BBOX={lat1},{lon1},{lat2},{lon2}"
-    loc_str = f"_{lon1}-{lon2}_{lat1}-{lat2}"
-    size = f"&WIDTH={int(dlon * lon2pix)}&HEIGHT={int(dlat * lat2pix)}"
-    layer = f"&LAYERS=MODIS_{satellite}_{var},Coastlines"
+    filepaths = download_MODIS_RGB_scenes(
+        start_date=start_date,
+        end_date=end_date,
+        bbox=bbox,
+        data_path=data_path,
+        image_format=image_format,
+        satellites=satellites,
+    )
 
-    dateRange = pd.date_range(start=startDate, end=endDate)
-
-    for i in range(len(dateRange)):
-        date = dateRange[i].date()
-        print(date)
-
-        yr = str(date.year)
-        mon = date.strftime("%m")
-        day = date.strftime("%d")
-
-        url = (
-            "https://wvs.earthdata.nasa.gov/api/v1/snapshot?"
-            + "REQUEST=GetSnapshot&TIME="
-            + yr
-            + "-"
-            + mon
-            + "-"
-            + day
-            + loc
-            + "&CRS=EPSG:4326"
-            + layer
-            + "&FORMAT=image/"
-            + filetype
-            + size
-        )
-        save_str = (
-            savePath
-            + f"/{satellite}_"
-            + var
-            + yr
-            + date.strftime("%m")
-            + "{:02d}".format(date.day)
-            + loc_str
-            + "."
-            + filetype
-        )
-        if exist_skip and os.path.exists(save_str):
-            print("Skip")
-        else:
-            try:
-                urllib.request.urlretrieve(url, save_str)
-            except:
-                print(f"Download failed for {save_str}")
-
-
-if __name__ == "__main__":
-    downloadMODISImgs("2002-12-01", "2002-12-10", [-58, -48, 10, 20], ".")
+    return CloudmetricPipeline(source_files=filepaths)
