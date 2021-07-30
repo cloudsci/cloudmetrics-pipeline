@@ -82,7 +82,7 @@ class PipelineStep(luigi.Task):
         # avoid putting `metric_metric=iorg` in identifier, rather have `metric_iorg`
         params = dict(self.parameters)
         if self.kind in params:
-            parts.append(params.pop(self.kind)[0])
+            parts.append(params.pop(self.kind))
 
         if len(params) > 0:
             param_str = "_".join(f"{k}={v}" for (k, v) in params.items())
