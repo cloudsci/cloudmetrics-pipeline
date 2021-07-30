@@ -174,8 +174,8 @@ class CloudmetricPipeline:
         ]
         if len(missing_metrics):
             raise NotImplementedError(
-                f"The {', '.join(missing_metrics)} aren't implement, the available"
-                f" metrics are: {', '.join(AVAILABLE_METRICS)}"
+                f"The {', '.join(missing_metrics)} metric isn't implemented, the"
+                f" available metrics are: {', '.join(AVAILABLE_METRICS)}"
             )
         step = dict(kind="metrics", parameters=dict(metrics=metrics))
         return self._add_step(step=step)
