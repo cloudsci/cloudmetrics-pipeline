@@ -78,8 +78,14 @@ class PipelineStep(luigi.Task):
     @property
     def identifier(self):
         parts = [self.kind]
-        if len(self.parameters) > 0:
-            param_str = "_".join(f"{k}={v}" for (k, v) in self.parameters.items())
+
+        # avoid putting `metric_metric=iorg` in identifier, rather have `metric_iorg`
+        params = dict(self.parameters)
+        if self.kind in params:
+            parts.append(params.pop(self.kind)[0])
+
+        if len(params) > 0:
+            param_str = "_".join(f"{k}={v}" for (k, v) in params.items())
             parts.append(param_str)
         if self.fn is not None:
             parts.append(self.fn.__name__)
