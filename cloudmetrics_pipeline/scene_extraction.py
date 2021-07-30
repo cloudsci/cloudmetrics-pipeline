@@ -1,12 +1,15 @@
 import yaml
 from pathlib import Path
 import xarray as xr
+import numpy as np
+import skimage.io
 
-import click
 
 FILETYPES = dict(image=["png", "jpg", "jpeg"], netcdf=["nc", "nc4"])
 
 DATETIME_FORMAT = "%Y%d%m%H%M"
+SCENE_PATH = "cloudmetrics"
+SCENE_DB_FILENAME = "scene_ids.yml"
 
 
 class NoReplaceDict(dict):
@@ -22,6 +25,19 @@ class NoReplaceDict(dict):
         if key in self:
             raise self.KeyExistsException(key)
         dict.__setitem__(self, key, val)
+
+
+def _make_image_scene(filepath):
+    """
+    Create a cloud-mask netCDF file from an image using the `greyscale_threshold`
+    """
+    scene_id = filepath.stem
+    image = skimage.io.imread(filepath).astype(np.int8)
+    da = xr.DataArray(image)
+    filepath_scene = Path(filepath).parent / SCENE_PATH / f"{scene_id}.nc"
+    filepath_scene.parent.mkdir(exist_ok=True, parents=True)
+    da.to_netcdf(filepath_scene)
+    return scene_id, filepath_scene
 
 
 def _make_netcdf_scenes(filepath):
@@ -50,48 +66,31 @@ def _make_netcdf_scenes(filepath):
 
     for scene_id, da_scene in _individual_scenes_in_file():
         filename_scene = f"{scene_id}.nc"
-        filepath_scene = filepath.parent / filename_scene
+        filepath_scene = filepath.parent / SCENE_PATH / filename_scene
+        filepath_scene.parent.mkdir(exist_ok=True, parents=True)
         da_scene.to_netcdf(filepath_scene)
         scenes[scene_id] = filepath_scene
 
     return scenes
 
 
-def make_scenes(data_path):
-    """
-    Look for images and netCDF files in `data_path` and generate scene IDs (and
-    individual scene netCDF-files where the netCDF files contain multiple
-    scenes). Returns a dictionary mapping the scene ids to the filename
-    containing the scene data.
-
-    The scene ids are generated as follows:
-        images: the filename stem is used
-        netCDF: the `scene_id` coordinate value is used if defined, otherwise
-                the `time` coordinate is formatted into string
-    """
-    filepaths_by_filetype = {}
-    for filetype, extensions in FILETYPES.items():
-        for file_ext in extensions:
-            filepaths_ext = list(data_path.glob(f"*.{file_ext}"))
-            if len(filepaths_ext) > 0:
-                filepaths_type = filepaths_by_filetype.setdefault(filetype, [])
-                filepaths_type += filepaths_ext
-
-    if len(filepaths_by_filetype) == 0:
-        raise FileNotFoundError(f"No valid source files found in `{data_path}`")
+def make_scenes(source_files):
+    if "*." in source_files:
+        path = Path(source_files)
+        source_files = list(path.parent.glob(path.name))
+    elif isinstance(source_files, str):
+        source_files = [source_files]
 
     scenes = NoReplaceDict()
 
-    for filetype, filepaths in filepaths_by_filetype.items():
-        if filetype == "image":
-            for filepath in filepaths:
-                scene_id = filepath.stem
-                scenes[scene_id] = filepath
-        elif filetype == "netcdf":
-            for filepath in filepaths:
-                scenes.update(_make_netcdf_scenes(filepath=filepath))
+    for filepath in source_files:
+        if filepath.suffix[1:] in FILETYPES["image"]:
+            scene_id, scene_filepath = _make_image_scene(filepath=filepath)
+            scenes[scene_id] = scene_filepath
+        elif filepath.suffix[1:] in FILETYPES["netcdf"]:
+            scenes.update(_make_netcdf_scenes(filepath=filepath))
         else:
-            raise NotImplementedError(filetype)
+            raise NotImplementedError(filepath.suffix)
 
     # turn into a regular dict and make paths into strings
     scenes = dict(scenes)
@@ -101,8 +100,18 @@ def make_scenes(data_path):
     return scenes
 
 
-def produce_scene_ids(data_path, dst_filename="scene_ids.yml"):
+def produce_scene_ids(data_path, dst_filename=SCENE_DB_FILENAME):
     scenes = make_scenes(data_path=data_path)
 
-    with open(dst_filename, "w") as fh:
+    with open(data_path / SCENE_PATH / dst_filename, "w") as fh:
         yaml.dump(scenes, fh, default_flow_style=False)
+
+
+if __name__ == "__main__":
+    import argparse
+
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("--data-path", default=".", type=Path)
+    args = argparser.parse_args()
+
+    produce_scene_ids(**vars(args))

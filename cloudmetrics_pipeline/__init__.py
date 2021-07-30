@@ -1,1 +1,2 @@
-from . import find_scenes, download
+from . import download
+from .process import find_scenes
