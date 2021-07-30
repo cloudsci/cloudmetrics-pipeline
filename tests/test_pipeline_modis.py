@@ -1,16 +1,7 @@
 from pathlib import Path
-import skimage
-import xarray as xr
 
 
 import cloudmetrics_pipeline as cm_pipeline
-
-
-def rgb_greyscale_mask(da_scene, greyscale_threshold=0.2):
-    image_grey = skimage.color.rgb2gray(da_scene)
-    cloud_mask = image_grey > greyscale_threshold
-    da_cloudmask = xr.DataArray(cloud_mask)
-    return da_cloudmask
 
 
 def test_MODIS_greyscale_metrics():
@@ -29,7 +20,7 @@ def test_MODIS_greyscale_metrics():
 
     (
         cm_pipeline.find_scenes(source_files=filepaths)
-        .mask(fn=rgb_greyscale_mask)
+        .mask(fn=cm_pipeline.masks.rgb_greyscale_mask)
         .compute_metrics(metrics=["fractal_dimension"])
         .execute()
     )
