@@ -81,6 +81,8 @@ def make_scenes(source_files):
     elif isinstance(source_files, str):
         source_files = [source_files]
 
+    source_files = [Path(source_file) for source_file in source_files]
+
     scenes = NoReplaceDict()
 
     for filepath in source_files:
