@@ -1,6 +1,7 @@
 import yaml
 from pathlib import Path
 import xarray as xr
+import numpy as np
 import skimage.io
 
 
@@ -31,7 +32,7 @@ def _make_image_scene(filepath):
     Create a cloud-mask netCDF file from an image using the `greyscale_threshold`
     """
     scene_id = filepath.stem
-    image = skimage.io.imread(filepath)
+    image = skimage.io.imread(filepath).astype(np.int8)
     da = xr.DataArray(image)
     filepath_scene = Path(filepath).parent / SCENE_PATH / f"{scene_id}.nc"
     filepath_scene.parent.mkdir(exist_ok=True, parents=True)
