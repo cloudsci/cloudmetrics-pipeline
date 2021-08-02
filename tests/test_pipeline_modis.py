@@ -8,7 +8,7 @@ def test_MODIS_greyscale_metrics():
     data_path = Path("/tmp/cm_pipeline")
     data_path.mkdir(exist_ok=True, parents=True)
 
-    ds_metrics = (
+    da_metric = (
         cm_pipeline.download.modis_rgb(
             start_date="2020-01-01",
             end_date="2020-01-02",
@@ -20,4 +20,4 @@ def test_MODIS_greyscale_metrics():
         .execute()
     )
 
-    assert "fractal_dimension" in ds_metrics.data_vars
+    assert da_metric.name == "fractal_dimension"

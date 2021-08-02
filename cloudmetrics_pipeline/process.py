@@ -253,7 +253,14 @@ class CloudmetricPipeline:
 
         outputs = self._run_tasks(tasks=parent_tasks, parallel_tasks=parallel_tasks)
         identifier = self._make_pipeline_id(tasks=parent_tasks)
-        return self._store_output(outputs=outputs, identifier=identifier)
+
+        # TODO: should we do something more clever here to work out where to
+        # put the output data?
+        p_out = Path(self._source_files[0]).parent
+
+        return self._store_output(
+            data_path=p_out, outputs=outputs, identifier=identifier
+        )
 
     def _make_pipeline_id(self, tasks):
         task_identifiers = []
@@ -266,10 +273,11 @@ class CloudmetricPipeline:
 
         return s_hash
 
-    def _store_output(self, outputs, identifier):
+    def _store_output(self, data_path, outputs, identifier):
         # TODO: put this into a luigi pipeline instead
         fn_out = f"data-{identifier}.nc"
-        p_out = Path(SCENE_PATH) / fn_out
+
+        p_out = data_path / SCENE_PATH / fn_out
 
         if not p_out.exists():
             das = [output.open() for output in outputs]
