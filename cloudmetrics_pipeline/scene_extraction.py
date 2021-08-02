@@ -36,7 +36,8 @@ def _make_image_scene(filepath):
     # ensure the image data is saved so that it renders correctly when plotting
     # the masks later
     image = np.rot90(np.fliplr(image), k=2)
-    da = xr.DataArray(image)
+    # cast to int8 here, xarray isn't happy about doing uint8 -> int8 cast
+    da = xr.DataArray(image.astype(np.int8))
     filepath_scene = Path(filepath).parent / SCENE_PATH / f"{scene_id}.nc"
     filepath_scene.parent.mkdir(exist_ok=True, parents=True)
     da.to_netcdf(filepath_scene)
