@@ -2,9 +2,11 @@ import datetime
 from pathlib import Path
 import dateutil
 import pytz
+import os
 
 from ..scene_extraction import DATETIME_FORMAT
 from .sources.worldview import download_rgb_image as worldview_rgb_dl
+from .sources.modaps import ModapsClient
 from ..process import CloudmetricPipeline
 
 
@@ -75,3 +77,47 @@ def modis_rgb_pipeline(
     )
 
     return CloudmetricPipeline(source_files=filepaths)
+
+
+def modis_modaps_pipeline(
+    start_date,
+    end_date,
+    bbox,
+    data_path=".",
+    satellites=["Terra", "Aqua"],
+    products=["Cloud_Mask_1km", "Cloud_Top_Height", "Cloud_Water_Path", "Sensor_Zenith"]
+):
+    MODAPS_USER = os.environ.get("MODAPS_USER")
+    MODAPS_APPKEY = os.environ.get("MODAPS_APPKEY")
+
+    if MODAPS_APPKEY is None or MODAPS_USER is None:
+        raise Exception(
+            "Please set your MODAPS credentials using the MODAPS_USER and"
+            " MODAPS_APPKEY environment variables"
+        )
+
+    for satellite in satellites:
+        if satellite == "Terra":
+            satkey = "MOD"
+            instrument = "AM1M"
+        elif satellite == "Aqua":
+            satkey = "MYD"
+            instrument = "PM1M"
+        else:
+            raise NotImplementedError(satellite)
+
+        kwargs = {
+            "instrument": instrument,  # Aqua - PM1M; Terra - AM1M
+            "product": f"{satkey}06_L2",  # MODIS L2 Cloud product
+            # (MYD - Aqua; MOD - Terra)
+            "collection": 61,  # hdf collection (61 for Aqua and Terra)
+            "layers": [
+                f"{satkey}06_L2___{product}" for product in products
+            ],
+            "email": MODAPS_USER,
+            "appKey": MODAPS_APPKEY,
+        }
+
+        modapsClient = ModapsClient()
+        order_ids = modapsClient.orderFiles(kwargs)
+        print("order_ids=", order_ids)
