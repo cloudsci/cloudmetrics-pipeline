@@ -6,3 +6,4 @@ __pyache__/
 
 .*.sw*
 scene_ids.yml
+*.egg-info/

@@ -9,6 +9,7 @@ import warnings
 import cloudmetrics
 from .scene_extraction import SCENE_PATH, SCENE_DB_FILENAME, make_scenes
 from .utils import optional_debugging
+from .steps.tile import get_sliding_window_view_strided
 
 
 AVAILABLE_METRICS = [
@@ -48,8 +49,17 @@ def _load_scene_ids(data_path):
 
 def _compute_metric_on_cloudmask(da_cloudmask, metric):
     fn_metric = getattr(cloudmetrics, metric)
-    metric_value = fn_metric(cloud_mask=da_cloudmask.values)
-    return xr.DataArray(metric_value)
+
+    def _fn_metric_wrapped(da_cloudmask_):
+        return xr.DataArray(fn_metric(da_cloudmask_.values))
+
+    if "x_dim" in da_cloudmask.attrs and "y_dim" in da_cloudmask.attrs:
+        x_dim = da_cloudmask.attrs["x_dim"]
+        y_dim = da_cloudmask.attrs["y_dim"]
+        da_stacked = da_cloudmask.stack(n=(f"{x_dim}_stride", f"{y_dim}_stride"))
+        return da_stacked.groupby("n").apply(_fn_metric_wrapped).unstack("n")
+    else:
+        return _fn_metric_wrapped(da_cloudmask_=da_cloudmask)
 
 
 class SourceFile(luigi.Task):
@@ -136,6 +146,8 @@ class PipelineStep(luigi.Task):
                     " to the pipeline. Currently you are trying to compute metrics"
                     " on a dataset with the following variables: {', '.join(ds_or_da.data_vars.keys())}"
                 )
+        elif self.kind == "tile":
+            da = get_sliding_window_view_strided(ds_or_da, **self.parameters)
         else:
             raise NotImplementedError(self.kind)
 
@@ -166,6 +178,16 @@ class CloudmetricPipeline:
         arguments **kwargs
         """
         step = dict(kind="mask", fn=fn, parameters=kwargs)
+        return self._add_step(step=step)
+
+    def tile(self, window_size, window_stride=None, window_offset="stride_center"):
+        """ """
+        kwargs = dict(
+            window_size=window_size,
+            window_stride=window_stride,
+            window_offset=window_offset,
+        )
+        step = dict(kind="tile", parameters=kwargs)
         return self._add_step(step=step)
 
     def compute_metrics(self, metrics):
