@@ -290,7 +290,13 @@ class CloudmetricPipeline:
         else:
             ds_merged = xr.open_dataset(p_out)
 
-        return ds_merged
+        if len(ds_merged.data_vars) == 1:
+            name = list(ds_merged.data_vars)[0]
+            da = ds_merged[name]
+            da.name = name
+            return da
+        else:
+            return ds_merged
 
 
 def find_scenes(source_files):
