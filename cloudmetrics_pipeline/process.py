@@ -284,15 +284,8 @@ class CloudmetricPipeline:
                 tasks = []
 
         outputs = self._run_tasks(tasks=parent_tasks, parallel_tasks=parallel_tasks)
-        identifier = self._make_pipeline_id(tasks=parent_tasks)
 
-        # TODO: should we do something more clever here to work out where to
-        # put the output data?
-        p_out = Path(self._source_files[0]).parent
-
-        return self._store_output(
-            data_path=p_out, outputs=outputs, identifier=identifier
-        )
+        return self._merge_outputs(outputs=outputs)
 
     def _make_pipeline_id(self, tasks):
         task_identifiers = []
@@ -305,30 +298,28 @@ class CloudmetricPipeline:
 
         return s_hash
 
-    def _store_output(self, data_path, outputs, identifier):
+    def _store_output(self, data_path, ds_merged, identifier, parent_tasks):
+        identifier = self._make_pipeline_id(tasks=parent_tasks)
+
         # TODO: put this into a luigi pipeline instead
         fn_out = f"data-{identifier}.nc"
-
         p_out = data_path / SCENE_PATH / fn_out
+        ds_merged.to_netcdf(p_out)
 
-        if not p_out.exists():
-            das = [output.open() for output in outputs]
-            if len(set([da.name for da in das])):
-                das_by_name = {}
-                for da in das:
-                    das_by_name.setdefault(da.name, []).append(da)
+    def _merge_outputs(self, outputs):
+        das = [output.open() for output in outputs]
+        if len(set([da.name for da in das])):
+            das_by_name = {}
+            for da in das:
+                das_by_name.setdefault(da.name, []).append(da)
 
-                das_merged = []
-                for name, das_with_name in das_by_name.items():
-                    das_merged.append(xr.concat(das_with_name, dim="scene_id"))
+            das_merged = []
+            for name, das_with_name in das_by_name.items():
+                das_merged.append(xr.concat(das_with_name, dim="scene_id"))
 
-                ds_merged = xr.merge(das_merged)
-            else:
-                ds_merged = xr.concat(das, dim="scene_id")
-
-            ds_merged.to_netcdf(p_out)
+            ds_merged = xr.merge(das_merged)
         else:
-            ds_merged = xr.open_dataset(p_out)
+            ds_merged = xr.concat(das, dim="scene_id")
 
         if len(ds_merged.data_vars) == 1:
             name = list(ds_merged.data_vars)[0]
