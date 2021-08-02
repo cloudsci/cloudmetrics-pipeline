@@ -47,7 +47,7 @@ def _load_scene_ids(data_path):
         return scenes
 
 
-def _compute_metric_on_cloudmask(da_cloudmask, metric, window_size=None, window_stride=None):
+def _compute_metric_on_cloudmask(da_cloudmask, metric):
     fn_metric = getattr(cloudmetrics, metric)
     metric_value = fn_metric(cloud_mask=da_cloudmask.values)
     return xr.DataArray(metric_value)
