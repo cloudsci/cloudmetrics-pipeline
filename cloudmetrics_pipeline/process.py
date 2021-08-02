@@ -6,10 +6,12 @@ import inspect
 import numpy as np
 import warnings
 import hashlib
+import shutil
 
 import cloudmetrics
 from .scene_extraction import SCENE_PATH, SCENE_DB_FILENAME, make_scenes
 from .utils import optional_debugging
+from .steps.tile import get_sliding_window_view_strided
 
 
 AVAILABLE_METRICS = [
@@ -49,11 +51,17 @@ def _load_scene_ids(data_path):
 
 def _compute_metric_on_cloudmask(da_cloudmask, metric):
     fn_metric = getattr(cloudmetrics, metric)
-    metric_value = fn_metric(cloud_mask=da_cloudmask.values)
-    da = xr.DataArray(metric_value)
-    da.name = metric
-    da["scene_id"] = da_cloudmask.scene_id
-    return da
+
+    def _fn_metric_wrapped(da_cloudmask_):
+        return xr.DataArray(fn_metric(da_cloudmask_.values))
+
+    if "x_dim" in da_cloudmask.attrs and "y_dim" in da_cloudmask.attrs:
+        x_dim = da_cloudmask.attrs["x_dim"]
+        y_dim = da_cloudmask.attrs["y_dim"]
+        da_stacked = da_cloudmask.stack(n=(f"{x_dim}_stride", f"{y_dim}_stride"))
+        return da_stacked.groupby("n").apply(_fn_metric_wrapped).unstack("n")
+    else:
+        return _fn_metric_wrapped(da_cloudmask_=da_cloudmask)
 
 
 class SourceFile(luigi.Task):
@@ -113,6 +121,9 @@ class PipelineStep(luigi.Task):
                     da = self.fn(da_scene=ds_or_da, **self.parameters)
                 else:
                     da = self.fn(ds_scene=ds_or_da, **self.parameters)
+            da.name = "mask"
+            da.attrs.update(self.parameters)
+            da.attrs["fn"] = self.fn.__name__
         elif self.kind == "metric":
             if isinstance(ds_or_da, xr.DataArray):
                 da = ds_or_da
@@ -142,6 +153,8 @@ class PipelineStep(luigi.Task):
                     " to the pipeline. Currently you are trying to compute metrics"
                     " on a dataset with the following variables: {', '.join(ds_or_da.data_vars.keys())}"
                 )
+        elif self.kind == "tile":
+            da = get_sliding_window_view_strided(ds_or_da, **self.parameters)
         else:
             raise NotImplementedError(self.kind)
 
@@ -179,6 +192,16 @@ class CloudmetricPipeline:
         step = dict(kind="mask", fn=fn, parameters=kwargs)
         return self._add_step(step=step)
 
+    def tile(self, window_size, window_stride=None, window_offset="stride_center"):
+        """ """
+        kwargs = dict(
+            window_size=window_size,
+            window_stride=window_stride,
+            window_offset=window_offset,
+        )
+        step = dict(kind="tile", parameters=kwargs)
+        return self._add_step(step=step)
+
     def compute_metrics(self, metrics):
         """
         Compute all `metrics`
@@ -205,12 +228,21 @@ class CloudmetricPipeline:
         else:
             raise Exception("Error occoured while executing pipeline")
 
-    def execute(self, parallel_tasks=1, debug=False):
+    def execute(self, parallel_tasks=1, debug=False, clean=False):
         """
         Execute the pipeline with `parallel_tasks` number of tasks (if >1 then
         and instance of `luigid` must be running) and optionally with debugging
         (only possible when executing a single task at a time)
+
+        clean: remove all intermediate pipeline files. You should use this
+               while you are still modifying any functions you're passing into
+               the pipeline to avoid output from previous versions being cached
         """
+        if clean and Path(SCENE_PATH).exists():
+            # TODO: make this only remove the actual files created by the
+            # pipeline and not just everything in `cloudmetrics/`
+            shutil.rmtree(SCENE_PATH)
+
         # in the first step we need to split the source files into individual
         # scenes
         with optional_debugging(with_debugger=debug):
