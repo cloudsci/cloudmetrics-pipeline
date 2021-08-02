@@ -53,7 +53,7 @@ def _compute_metric_on_cloudmask(da_cloudmask, metric):
     fn_metric = getattr(cloudmetrics, metric)
 
     def _fn_metric_wrapped(da_cloudmask_):
-        return xr.DataArray(fn_metric(da_cloudmask_.values))
+        return xr.DataArray(fn_metric(da_cloudmask_.values), name=metric)
 
     if "x_dim" in da_cloudmask.attrs and "y_dim" in da_cloudmask.attrs:
         x_dim = da_cloudmask.attrs["x_dim"]
@@ -97,11 +97,11 @@ class PipelineStep(luigi.Task):
             parts.append(params.pop(self.kind))
 
         if len(params) > 0:
-            param_str = "_".join(f"{k}={v}" for (k, v) in params.items())
+            param_str = "__".join(f"{k}={v}" for (k, v) in params.items())
             parts.append(param_str)
         if self.fn is not None:
             parts.append(self.fn.__name__)
-        return "_".join(parts)
+        return "__".join(parts)
 
     def run(self):
         with optional_debugging(with_debugger=self.debug):
