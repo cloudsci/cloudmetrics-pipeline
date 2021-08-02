@@ -5,6 +5,7 @@ import luigi
 import inspect
 import numpy as np
 import warnings
+import shutil
 
 import cloudmetrics
 from .scene_extraction import SCENE_PATH, SCENE_DB_FILENAME, make_scenes
@@ -46,7 +47,7 @@ def _load_scene_ids(data_path):
         return scenes
 
 
-def _compute_metric_on_cloudmask(da_cloudmask, metric):
+def _compute_metric_on_cloudmask(da_cloudmask, metric, window_size=None, window_stride=None):
     fn_metric = getattr(cloudmetrics, metric)
     metric_value = fn_metric(cloud_mask=da_cloudmask.values)
     return xr.DataArray(metric_value)
@@ -107,6 +108,9 @@ class PipelineStep(luigi.Task):
                     da = self.fn(da_scene=ds_or_da, **self.parameters)
                 else:
                     da = self.fn(ds_scene=ds_or_da, **self.parameters)
+            da.name = "mask"
+            da.attrs.update(self.parameters)
+            da.attrs["fn"] = self.fn.__name__
         elif self.kind == "metric":
             if isinstance(ds_or_da, xr.DataArray):
                 da = ds_or_da
@@ -194,12 +198,21 @@ class CloudmetricPipeline:
         else:
             raise Exception("Error occoured while executing pipeline")
 
-    def execute(self, parallel_tasks=1, debug=False):
+    def execute(self, parallel_tasks=1, debug=False, clean=False):
         """
         Execute the pipeline with `parallel_tasks` number of tasks (if >1 then
         and instance of `luigid` must be running) and optionally with debugging
         (only possible when executing a single task at a time)
+
+        clean: remove all intermediate pipeline files. You should use this
+               while you are still modifying any functions you're passing into
+               the pipeline to avoid output from previous versions being cached
         """
+        if clean and Path(SCENE_PATH).exists():
+            # TODO: make this only remove the actual files created by the
+            # pipeline and not just everything in `cloudmetrics/`
+            shutil.rmtree(SCENE_PATH)
+
         # in the first step we need to split the source files into individual
         # scenes
         with optional_debugging(with_debugger=debug):

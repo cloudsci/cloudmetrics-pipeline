@@ -32,7 +32,10 @@ def _make_image_scene(filepath):
     Create a cloud-mask netCDF file from an image using the `greyscale_threshold`
     """
     scene_id = filepath.stem
-    image = skimage.io.imread(filepath).astype(np.int8)
+    image = skimage.io.imread(filepath)
+    # ensure the image data is saved so that it renders correctly when plotting
+    # the masks later
+    image = np.rot90(np.fliplr(image), k=2)
     da = xr.DataArray(image)
     filepath_scene = Path(filepath).parent / SCENE_PATH / f"{scene_id}.nc"
     filepath_scene.parent.mkdir(exist_ok=True, parents=True)
