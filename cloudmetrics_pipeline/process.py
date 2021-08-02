@@ -5,6 +5,7 @@ import luigi
 import inspect
 import numpy as np
 import warnings
+import hashlib
 
 import cloudmetrics
 from .scene_extraction import SCENE_PATH, SCENE_DB_FILENAME, make_scenes
@@ -49,7 +50,10 @@ def _load_scene_ids(data_path):
 def _compute_metric_on_cloudmask(da_cloudmask, metric):
     fn_metric = getattr(cloudmetrics, metric)
     metric_value = fn_metric(cloud_mask=da_cloudmask.values)
-    return xr.DataArray(metric_value)
+    da = xr.DataArray(metric_value)
+    da.name = metric
+    da["scene_id"] = da_cloudmask.scene_id
+    return da
 
 
 class SourceFile(luigi.Task):
@@ -97,6 +101,8 @@ class PipelineStep(luigi.Task):
 
     def _run(self):
         ds_or_da = self.input().open()
+        # ensure the scene id is always set so we can refer to it
+        ds_or_da["scene_id"] = self.scene_id
 
         if self.kind == "mask":
             if isinstance(self.fn, str):
@@ -141,6 +147,11 @@ class PipelineStep(luigi.Task):
 
         Path(self.output().fn).parent.mkdir(exist_ok=True, parents=True)
         da.to_netcdf(self.output().fn)
+
+    @property
+    def scene_id(self):
+        filepath_parent = Path(self.parent.output().fn)
+        return filepath_parent.stem
 
     def output(self):
         filepath_parent = Path(self.parent.output().fn)
@@ -218,7 +229,7 @@ class CloudmetricPipeline:
             warnings.simplefilter("ignore")
             tasks = []
             for step in self._steps:
-                tasks = []
+                # there is a parent task for each scene
                 for parent_task in parent_tasks:
                     if step["kind"] == "metrics":
                         # shorthand which compute more than one metric, but we
@@ -235,10 +246,51 @@ class CloudmetricPipeline:
                     else:
                         task = PipelineStep(parent=parent_task, debug=debug, **step)
                         tasks.append(task)
-                parent_tasks = tasks
 
-        _ = self._run_tasks(tasks=tasks, parallel_tasks=parallel_tasks)
-        # TODO: write routine to aggregate output into named file
+                # the new set of tasks become the new parent tasks
+                parent_tasks = tasks
+                tasks = []
+
+        outputs = self._run_tasks(tasks=parent_tasks, parallel_tasks=parallel_tasks)
+        identifier = self._make_pipeline_id(tasks=parent_tasks)
+        return self._store_output(outputs=outputs, identifier=identifier)
+
+    def _make_pipeline_id(self, tasks):
+        task_identifiers = []
+        for task in tasks:
+            t_id = task.output().fn
+            task_identifiers.append(t_id)
+
+        s = "__".join(sorted(task_identifiers))
+        s_hash = hashlib.md5(s.encode("utf-8")).hexdigest()
+
+        return s_hash
+
+    def _store_output(self, outputs, identifier):
+        # TODO: put this into a luigi pipeline instead
+        fn_out = f"data-{identifier}.nc"
+        p_out = Path(SCENE_PATH) / fn_out
+
+        if not p_out.exists():
+            das = [output.open() for output in outputs]
+            if len(set([da.name for da in das])):
+                das_by_name = {}
+                for da in das:
+                    das_by_name.setdefault(da.name, []).append(da)
+
+                das_merged = []
+                for name, das_with_name in das_by_name.items():
+                    das_merged.append(xr.concat(das_with_name, dim="scene_id"))
+
+                ds_merged = xr.merge(das_merged)
+            else:
+                ds_merged = xr.concat(das, dim="scene_id")
+
+            ds_merged.to_netcdf(p_out)
+        else:
+            ds_merged = xr.open_dataset(p_out)
+
+        return ds_merged
 
 
 def find_scenes(source_files):
