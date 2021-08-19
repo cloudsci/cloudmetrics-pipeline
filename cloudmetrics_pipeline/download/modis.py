@@ -6,7 +6,7 @@ import os
 
 from ..scene_extraction import DATETIME_FORMAT
 from .sources.worldview import download_rgb_image as worldview_rgb_dl
-from .sources.modaps import ModapsClient
+from modapsclient import ModapsClient
 from ..process import CloudmetricPipeline
 
 
@@ -84,40 +84,83 @@ def modis_modaps_pipeline(
     end_date,
     bbox,
     data_path=".",
+    collection=61,
     satellites=["Terra", "Aqua"],
     products=["Cloud_Mask_1km", "Cloud_Top_Height", "Cloud_Water_Path", "Sensor_Zenith"]
 ):
-    MODAPS_USER = os.environ.get("MODAPS_USER")
-    MODAPS_APPKEY = os.environ.get("MODAPS_APPKEY")
+    """
+    bbox: WESN format
+    collection: hdf collection (61 for Aqua and Terra)
+    """
+    MODAPS_EMAIL = os.environ.get("MODAPS_EMAIL")
+    MODAPS_TOKEN = os.environ.get("MODAPS_TOKEN")
 
-    if MODAPS_APPKEY is None or MODAPS_USER is None:
+    if MODAPS_TOKEN is None or MODAPS_EMAIL is None:
         raise Exception(
-            "Please set your MODAPS credentials using the MODAPS_USER and"
-            " MODAPS_APPKEY environment variables"
+            "Please set your NASA MODAPS credentials using the MODAPS_EMAIL and"
+            " MODAPS_TOKEN environment variables"
         )
+
+    # 2018-03-11 12:00
+    MODAPS_DATETIME_FORMAT = "%Y-%m-%d %H:%M"
+
+    modapsClient = ModapsClient()
 
     for satellite in satellites:
         if satellite == "Terra":
             satkey = "MOD"
-            instrument = "AM1M"
         elif satellite == "Aqua":
             satkey = "MYD"
-            instrument = "PM1M"
         else:
             raise NotImplementedError(satellite)
 
-        kwargs = {
-            "instrument": instrument,  # Aqua - PM1M; Terra - AM1M
-            "product": f"{satkey}06_L2",  # MODIS L2 Cloud product
-            # (MYD - Aqua; MOD - Terra)
-            "collection": 61,  # hdf collection (61 for Aqua and Terra)
-            "layers": [
-                f"{satkey}06_L2___{product}" for product in products
-            ],
-            "email": MODAPS_USER,
-            "appKey": MODAPS_APPKEY,
-        }
+        layers = [
+            f"{satkey}06_L2___{product}" for product in products
+        ]
 
-        modapsClient = ModapsClient()
-        order_ids = modapsClient.orderFiles(kwargs)
-        print("order_ids=", order_ids)
+        file_ids = modapsClient.searchForFiles(
+            products=f"{satkey}06_L2",  # MODIS L2 Cloud product
+            startTime=dateutil.parser.parse(start_date).strftime(MODAPS_DATETIME_FORMAT),
+            endTime=dateutil.parser.parse(end_date).strftime(MODAPS_DATETIME_FORMAT),
+            west=bbox[0],
+            east=bbox[1],
+            south=bbox[2],
+            north=bbox[3],
+            dayNightBoth=u"D",
+            collection=collection,
+        )
+
+        # import ipdb
+        # ipdb.set_trace()
+
+        order_ids = ["501640969", "501640970"]
+
+        print(modapsClient.getOrderStatus(order_ids[0]))
+
+        modapsClient.fetchFilesForOrder(order_id=order_ids[0], auth_token=MODAPS_TOKEN, path=data_path)
+
+        cmd = (
+            "wget -e robots=off -m -np -R .html,.tmp -nH --cut-dirs=3 \
+                https://ladsweb.modaps.eosdis.nasa.gov/archive/orders/"
+            + order_ids[0]
+            + '/ --header "Authorization: Bearer '
+            + MODAPS_TOKEN
+            + '" -P '
+            + "."
+        )
+
+        print(cmd)
+
+        # order_ids = modapsClient.orderFiles(
+            # email=MODAPS_EMAIL,
+            # FileIDs=file_ids,
+            # doMosaic=True,
+            # geoSubsetWest=bbox[0],
+            # geoSubsetEast=bbox[1],
+            # geoSubsetSouth=bbox[2],
+            # geoSubsetNorth=bbox[3],
+            # subsetDataLayer=layers,
+        # )
+        # print("order_ids=", order_ids)
+
+        continue
