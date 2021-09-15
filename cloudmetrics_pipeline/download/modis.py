@@ -3,12 +3,17 @@ from pathlib import Path
 import dateutil
 import pytz
 import os
+import yaml
 
 from ..scene_extraction import DATETIME_FORMAT
 from .sources.worldview import download_rgb_image as worldview_rgb_dl
 from modapsclient import ModapsClient
 from ..process import CloudmetricPipeline
 from .modis_cloudmask import read_MODIS_cloud_mask
+from ..utils import dict_to_hash
+
+# 2018-03-11 12:00
+MODAPS_DATETIME_FORMAT = "%Y-%m-%d %H:%M"
 
 
 def _parse_utc_timedate(s):
@@ -80,6 +85,58 @@ def modis_rgb_pipeline(
     return CloudmetricPipeline(source_files=filepaths)
 
 
+def _modaps_query_and_order(
+    modapsClient,
+    satellite,
+    products,
+    start_date,
+    end_date,
+    bbox,
+    collection,
+    MODAPS_EMAIL,
+):
+    """
+    Query modaps and place an order for all the matching files
+    """
+    if satellite == "Terra":
+        satkey = "MOD"
+    elif satellite == "Aqua":
+        satkey = "MYD"
+    else:
+        raise NotImplementedError(satellite)
+
+    layers = [f"{satkey}06_L2___{product}" for product in products]
+
+    file_ids = modapsClient.searchForFiles(
+        products=f"{satkey}06_L2",  # MODIS L2 Cloud product
+        startTime=dateutil.parser.parse(start_date).strftime(MODAPS_DATETIME_FORMAT),
+        endTime=dateutil.parser.parse(end_date).strftime(MODAPS_DATETIME_FORMAT),
+        west=bbox[0],
+        east=bbox[1],
+        south=bbox[2],
+        north=bbox[3],
+        dayNightBoth="D",
+        collection=collection,
+    )
+
+    order_ids = modapsClient.orderFiles(
+        email=MODAPS_EMAIL,
+        FileIDs=file_ids,
+        doMosaic=True,
+        geoSubsetWest=bbox[0],
+        geoSubsetEast=bbox[1],
+        geoSubsetSouth=bbox[2],
+        geoSubsetNorth=bbox[3],
+        subsetDataLayer=layers,
+    )
+
+    return order_ids
+
+
+class MODAPSOrderProcessingException(Exception):
+    pass
+
+
 def modis_modaps_pipeline(
     start_date,
     end_date,
@@ -97,81 +154,89 @@ def modis_modaps_pipeline(
     """
     bbox: WESN format
     collection: hdf collection (61 for Aqua and Terra)
+    start_date, end_date: time span for query
+    products: list of products to download. For example 'Cloud_Mask_1km'
     """
+    query_hash = dict_to_hash(locals())
+
     MODAPS_EMAIL = os.environ.get("MODAPS_EMAIL")
     MODAPS_TOKEN = os.environ.get("MODAPS_TOKEN")
 
     if MODAPS_TOKEN is None or MODAPS_EMAIL is None:
         raise Exception(
             "Please set your NASA MODAPS credentials using the MODAPS_EMAIL and"
-            " MODAPS_TOKEN environment variables"
+            " MODAPS_TOKEN environment variables. You can create a new account for"
+            " NASA LAADS DAAC on https://ladsweb.modaps.eosdis.nasa.gov/"
+            " and generate a key on https://ladsweb.modaps.eosdis.nasa.gov/profile/#app-keys"
         )
-
-    # 2018-03-11 12:00
-    MODAPS_DATETIME_FORMAT = "%Y-%m-%d %H:%M"
 
     modapsClient = ModapsClient()
 
-    for satellite in satellites:
-        if satellite == "Terra":
-            satkey = "MOD"
-        elif satellite == "Aqua":
-            satkey = "MYD"
+    order_reference_filepath = Path(f"modaps_order.{query_hash}.yml")
+
+    if not order_reference_filepath.exists():
+        order_ids = []
+        for satellite in satellites:
+            order_ids += _modaps_query_and_order(
+                modapsClient=modapsClient,
+                satellite=satellite,
+                products=products,
+                start_date=start_date,
+                end_date=end_date,
+                bbox=bbox,
+                collection=collection,
+                MODAPS_EMAIL=MODAPS_EMAIL,
+            )
+
+        if len(order_ids) > 0:
+            with open(order_reference_filepath, "w") as fh:
+                yaml.dump(order_ids, fh)
+            raise MODAPSOrderProcessingException(
+                "MODAPS data order was placed, please wait a few minutes"
+                " for the order to be processed before running the pipeline again"
+            )
         else:
-            raise NotImplementedError(satellite)
+            raise Exception("No files were found matching the query parameters")
 
-        layers = [f"{satkey}06_L2___{product}" for product in products]
+    # if we reach this stage we know that a file containing the order ids exists
+    with open(order_reference_filepath) as fh:
+        order_ids = yaml.load(fh)
 
-        file_ids = modapsClient.searchForFiles(
-            products=f"{satkey}06_L2",  # MODIS L2 Cloud product
-            startTime=dateutil.parser.parse(start_date).strftime(
-                MODAPS_DATETIME_FORMAT
-            ),
-            endTime=dateutil.parser.parse(end_date).strftime(MODAPS_DATETIME_FORMAT),
-            west=bbox[0],
-            east=bbox[1],
-            south=bbox[2],
-            north=bbox[3],
-            dayNightBoth="D",
-            collection=collection,
+    order_statuses = {
+        order_id: modapsClient.getOrderStatus(order_id) for order_id in order_ids
+    }
+    unique_statuses = tuple(set(order_statuses.values()))
+
+    if len(unique_statuses) > 1 or unique_statuses[0]:
+        print(order_statuses)
+        raise MODAPSOrderProcessingException(
+            "Some MODAPS orders are still processing. Please wait a while and"
+            " then try running the pipeline again. You can check the status on"
+            " your orders on https://ladsweb.modaps.eosdis.nasa.gov/search/history"
         )
 
-        # import ipdb
-        # ipdb.set_trace()
+    for order_id in order_ids:
+        print(modapsClient.getOrderStatus(order_id))
 
-        order_ids = ["501640969", "501640970"]
-
-        print(modapsClient.getOrderStatus(order_ids[0]))
-
+    filepaths = []
+    for order_id in order_ids:
         files = modapsClient.fetchFilesForOrder(
             order_id=order_ids[0], auth_token=MODAPS_TOKEN, path=data_path
         )
 
-        cloudmask_fp = None
-        for filepath in files:
-            if "Cloud_Mask" in filepath.name:
-                cloudmask_fp = filepath
-                break
+    return
 
-        if cloudmask_fp is None:
-            raise Exception
+    cloudmask_fp = None
+    for filepath in files:
+        if "Cloud_Mask" in filepath.name:
+            cloudmask_fp = filepath
+            break
 
-        da_cloudmask = read_MODIS_cloud_mask(filepath=cloudmask_fp)
-        filepath_nc = cloudmask_fp.parent / cloudmask_fp.name.replace(".hdf", ".nc")
-        da_cloudmask.to_netcdf(filepath_nc)
+    if cloudmask_fp is None:
+        raise Exception
 
-        break
+    da_cloudmask = read_MODIS_cloud_mask(filepath=cloudmask_fp)
+    filepath_nc = cloudmask_fp.parent / cloudmask_fp.name.replace(".hdf", ".nc")
+    da_cloudmask.to_netcdf(filepath_nc)
 
-        # order_ids = modapsClient.orderFiles(
-        # email=MODAPS_EMAIL,
-        # FileIDs=file_ids,
-        # doMosaic=True,
-        # geoSubsetWest=bbox[0],
-        # geoSubsetEast=bbox[1],
-        # geoSubsetSouth=bbox[2],
-        # geoSubsetNorth=bbox[3],
-        # subsetDataLayer=layers,
-        # )
-        # print("order_ids=", order_ids)
-
-        continue
+    return CloudmetricPipeline(source_files=filepaths)
