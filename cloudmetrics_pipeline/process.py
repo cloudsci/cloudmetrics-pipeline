@@ -246,6 +246,9 @@ class CloudmetricPipeline:
         with optional_debugging(with_debugger=debug):
             scenes = make_scenes(source_files=self._source_files)
 
+            if len(scenes) == 0:
+                raise Exception("No scenes found")
+
         if debug and parallel_tasks != 1:
             raise Exception("Debugging is only possible when executing in serial mode")
 
