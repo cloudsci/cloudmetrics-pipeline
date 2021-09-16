@@ -1,3 +1,6 @@
+import json
+
+
 def optional_debugging(with_debugger):
     """
     Optionally catch exceptions and launch ipdb
@@ -16,3 +19,8 @@ def optional_debugging(with_debugger):
                 pass
 
         return NoDebug()
+
+
+def dict_to_hash(data):
+    # https://stackoverflow.com/a/22003440
+    return hash(json.dumps(data, sort_keys=True))

@@ -5,6 +5,7 @@ import luigi
 import inspect
 import numpy as np
 import warnings
+import hashlib
 import shutil
 
 import cloudmetrics
@@ -52,7 +53,7 @@ def _compute_metric_on_cloudmask(da_cloudmask, metric):
     fn_metric = getattr(cloudmetrics, metric)
 
     def _fn_metric_wrapped(da_cloudmask_):
-        return xr.DataArray(fn_metric(da_cloudmask_.values))
+        return xr.DataArray(fn_metric(da_cloudmask_.values), name=metric)
 
     if "x_dim" in da_cloudmask.attrs and "y_dim" in da_cloudmask.attrs:
         x_dim = da_cloudmask.attrs["x_dim"]
@@ -96,11 +97,11 @@ class PipelineStep(luigi.Task):
             parts.append(params.pop(self.kind))
 
         if len(params) > 0:
-            param_str = "_".join(f"{k}={v}" for (k, v) in params.items())
+            param_str = "__".join(f"{k}={v}" for (k, v) in params.items())
             parts.append(param_str)
         if self.fn is not None:
             parts.append(self.fn.__name__)
-        return "_".join(parts)
+        return "__".join(parts)
 
     def run(self):
         with optional_debugging(with_debugger=self.debug):
@@ -108,6 +109,8 @@ class PipelineStep(luigi.Task):
 
     def _run(self):
         ds_or_da = self.input().open()
+        # ensure the scene id is always set so we can refer to it
+        ds_or_da["scene_id"] = self.scene_id
 
         if self.kind == "mask":
             if isinstance(self.fn, str):
@@ -155,6 +158,11 @@ class PipelineStep(luigi.Task):
 
         Path(self.output().fn).parent.mkdir(exist_ok=True, parents=True)
         da.to_netcdf(self.output().fn)
+
+    @property
+    def scene_id(self):
+        filepath_parent = Path(self.parent.output().fn)
+        return filepath_parent.stem
 
     def output(self):
         filepath_parent = Path(self.parent.output().fn)
@@ -251,7 +259,7 @@ class CloudmetricPipeline:
             warnings.simplefilter("ignore")
             tasks = []
             for step in self._steps:
-                tasks = []
+                # there is a parent task for each scene
                 for parent_task in parent_tasks:
                     if step["kind"] == "metrics":
                         # shorthand which compute more than one metric, but we
@@ -268,10 +276,56 @@ class CloudmetricPipeline:
                     else:
                         task = PipelineStep(parent=parent_task, debug=debug, **step)
                         tasks.append(task)
-                parent_tasks = tasks
 
-        _ = self._run_tasks(tasks=tasks, parallel_tasks=parallel_tasks)
-        # TODO: write routine to aggregate output into named file
+                # the new set of tasks become the new parent tasks
+                parent_tasks = tasks
+                tasks = []
+
+        outputs = self._run_tasks(tasks=parent_tasks, parallel_tasks=parallel_tasks)
+
+        return self._merge_outputs(outputs=outputs)
+
+    def _make_pipeline_id(self, tasks):
+        task_identifiers = []
+        for task in tasks:
+            t_id = task.output().fn
+            task_identifiers.append(t_id)
+
+        s = "__".join(sorted(task_identifiers))
+        s_hash = hashlib.md5(s.encode("utf-8")).hexdigest()
+
+        return s_hash
+
+    def _store_output(self, data_path, ds_merged, identifier, parent_tasks):
+        identifier = self._make_pipeline_id(tasks=parent_tasks)
+
+        # TODO: put this into a luigi pipeline instead
+        fn_out = f"data-{identifier}.nc"
+        p_out = data_path / SCENE_PATH / fn_out
+        ds_merged.to_netcdf(p_out)
+
+    def _merge_outputs(self, outputs):
+        das = [output.open() for output in outputs]
+        if len(set([da.name for da in das])):
+            das_by_name = {}
+            for da in das:
+                das_by_name.setdefault(da.name, []).append(da)
+
+            das_merged = []
+            for name, das_with_name in das_by_name.items():
+                das_merged.append(xr.concat(das_with_name, dim="scene_id"))
+
+            ds_merged = xr.merge(das_merged)
+        else:
+            ds_merged = xr.concat(das, dim="scene_id")
+
+        if len(ds_merged.data_vars) == 1:
+            name = list(ds_merged.data_vars)[0]
+            da = ds_merged[name]
+            da.name = name
+            return da
+        else:
+            return ds_merged
 
 
 def find_scenes(source_files):
