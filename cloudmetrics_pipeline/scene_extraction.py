@@ -57,11 +57,17 @@ def _make_netcdf_scenes(filepath):
                 yield (scene_id, da.sel(scene_id=scene_id))
         elif "time" in da or "time" in da.coords:
             times_str = da.time.dt.strftime(DATETIME_FORMAT)
-            for time in da.time.values:
-                time_str = times_str.sel(time=time).item()
-                filename_stem = filepath.stem
+            filename_stem = filepath.stem
+
+            if da.time.count() == 1:
+                time_str = times_str.item()
                 scene_id = f"{filename_stem}__{time_str}"
-                yield (scene_id, da.sel(time=time))
+                yield (scene_id, da)
+            else:
+                for time in da.time.values:
+                    time_str = times_str.sel(time=time).item()
+                    scene_id = f"{filename_stem}__{time_str}"
+                    yield (scene_id, da.sel(time=time))
         else:
             raise NotImplementedError(
                 "When using a netCDF file as source it should either"
