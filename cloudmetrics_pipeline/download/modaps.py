@@ -13,6 +13,7 @@ import yaml
 import rioxarray as rxr
 import parse
 import datetime
+import warnings
 
 from modapsclient import ModapsClient
 
@@ -25,7 +26,9 @@ MODAPS_DATETIME_FORMAT = "%Y-%m-%d %H:%M"
 QUALTITY_OPTIONS = ["confident_cloudy", "probably_cloudy"]
 
 # MOD06_L2.A2020001.mosaic.061.2021258091607.psmcgscs_000501652987.Cloud_Mask_1km.hdf
-FILENAME_FORMAT = "MOD06_L2.A{acquisition_date}.mosaic.061.{timestamp}.psmcgscs_{order_id}.{product}.hdf"
+FILENAME_FORMAT = "M{platform_id}D06_L2.A{acquisition_date}.mosaic.061.{timestamp}.psmcgscs_{order_id}.{product}.hdf"
+# MOD06_L2.A2018001.0950.061.2018003205209.psgscs_000501653312.hdf
+FILENAME_FORMAT_SINGLE = "M{platform_id}D06_L2.A{acquisition_time}.061.{timestamp}.psgscs_{order_id}.hdf"
 
 
 def read_bits(value, bit_start, bit_count):
@@ -59,7 +62,9 @@ def read_MODIS_cloud_mask(filepath, quality_flag="confident_cloudy"):
         raise NotImplementedError(quality_flag)
     quality_threshold = QUALTITY_OPTIONS.index(quality_flag)
 
-    da = rxr.open_rasterio(filepath)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Dataset has no geotransform, gcps, or rpcs. The identity matrix be returned.")
+        da = rxr.open_rasterio(filepath)
     assert "MODIS Cloud Mask" in da.attrs.get("long_name")
 
     # the `x` and `y` coordinates are lon and lat respectively
@@ -70,8 +75,17 @@ def read_MODIS_cloud_mask(filepath, quality_flag="confident_cloudy"):
     da_cloud_mask = da_field_quality_values <= quality_threshold
 
     file_meta = parse.parse(FILENAME_FORMAT, filepath.name)
-    acquisition_date = datetime.datetime.strptime(file_meta["acquisition_date"], "%Y%j")
-    da_cloud_mask["time"] = acquisition_date
+    if file_meta is not None:
+        acquisition_time = datetime.datetime.strptime(file_meta["acquisition_date"], "%Y%j")
+    else:
+        file_meta = parse.parse(FILENAME_FORMAT_SINGLE, filepath.name)
+        if file_meta is None:
+            import ipdb
+            ipdb.set_trace()
+            raise Exception("Couldn't parse filename format to get meta info")
+        acquisition_time = datetime.datetime.strptime(file_meta["acquisition_time"], "%Y%j.%H%M")
+
+    da_cloud_mask["time"] = acquisition_time
     da_cloud_mask.name = "cloud_mask"
     da_cloud_mask.attrs["type"] = quality_flag
 
@@ -221,7 +235,10 @@ def modaps_pipeline(
         # for example we want a boolean mask for the MODIS cloudmask
         # TODO: implement postprocessing for other files here too
         for filepath in files:
-            if "Cloud_Mask" in filepath.name:
+            if filepath.suffix != ".hdf":
+                continue
+
+            if "Cloud_Mask" in filepath.name or len(products) == 1 and products[0] == "Cloud_Mask_1km":
                 cloudmask_fp = filepath
 
                 da_cloudmask = read_MODIS_cloud_mask(filepath=cloudmask_fp)
