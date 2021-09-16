@@ -1,12 +1,25 @@
+"""
+Used resources:
+
+- https://gis.stackexchange.com/questions/328535/opening-eos-netcdf4-hdf5-file-with-correct-format-using-xarray
+- https://github.com/pytroll/satpy/blob/e72a3f029e6a94b55f48d894cbad20b1f4ef0562/satpy/etc/readers/modis_l2.yaml
+- https://github.com/mapbox/rasterio/issues/2026#issuecomment-720125978
+"""
 from pyhdf.SD import SD
 import numpy as np
 import xarray as xr
+import rioxarray as rxr
+import parse
+import datetime
 
 
 QUALTITY_OPTIONS = ["confident_cloudy", "probably_cloudy"]
 
+# MOD06_L2.A2020001.mosaic.061.2021258091607.psmcgscs_000501652987.Cloud_Mask_1km.hdf
+FILENAME_FORMAT = "MOD06_L2.A{acquisition_date}.mosaic.061.{timestamp}.psmcgscs_{order_id}.{product}.hdf"
 
-def read_bits(bit_start, bit_count, value):
+
+def read_bits(value, bit_start, bit_count):
     """
     Read binary fields - see e.g. https://science-emergence.com/Articles/How-to-read-a-MODIS-HDF-file-using-python-/
     Parameters
@@ -37,17 +50,20 @@ def read_MODIS_cloud_mask(filepath, quality_flag="confident_cloudy"):
         raise NotImplementedError(quality_flag)
     quality_threshold = QUALTITY_OPTIONS.index(quality_flag)
 
-    fh = SD(str(filepath))
+    da = rxr.open_rasterio(filepath)
+    assert "MODIS Cloud Mask" in da.attrs.get("long_name")
 
-    field_name = list(fh.datasets().keys())[0]
+    # the `x` and `y` coordinates are lon and lat respectively
+    da = da.rename(dict(x="lon", y="lat"))
 
-    field_values = fh.select(field_name).get()[..., 0]
+    # the first band contains the quality measure in the first two bits
+    da_field_quality_values = read_bits(da.sel(band=1), 1, 2)
+    da_cloud_mask = da_field_quality_values <= quality_threshold
 
-    # the quality of the field mask is defined by the first two bits
-    field_quality_values = read_bits(1, 2, field_values)
+    file_meta = parse.parse(FILENAME_FORMAT, filepath.name)
+    acquisition_date = datetime.datetime.strptime(file_meta["acquisition_date"], "%Y%j")
+    da_cloud_mask["time"] = acquisition_date
+    da_cloud_mask.name = "cloud_mask"
+    da_cloud_mask.attrs["type"] = quality_flag
 
-    cloud_mask = field_quality_values <= quality_threshold
-
-    da = xr.DataArray(cloud_mask, attrs=dict(resolution="1km"))
-
-    return da
+    return da_cloud_mask

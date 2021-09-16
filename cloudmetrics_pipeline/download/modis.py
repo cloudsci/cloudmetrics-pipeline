@@ -122,7 +122,7 @@ def _modaps_query_and_order(
     order_ids = modapsClient.orderFiles(
         email=MODAPS_EMAIL,
         FileIDs=file_ids,
-        doMosaic=True,
+        doMosaic=False,
         geoSubsetWest=bbox[0],
         geoSubsetEast=bbox[1],
         geoSubsetSouth=bbox[2],
@@ -141,7 +141,7 @@ def modis_modaps_pipeline(
     start_date,
     end_date,
     bbox,
-    data_path=".",
+    data_path="modaps.{query_hash}",
     collection=61,
     satellites=["Terra", "Aqua"],
     products=[
@@ -158,6 +158,7 @@ def modis_modaps_pipeline(
     products: list of products to download. For example 'Cloud_Mask_1km'
     """
     query_hash = dict_to_hash(locals())
+    data_path = Path(data_path.format(**locals()))
 
     MODAPS_EMAIL = os.environ.get("MODAPS_EMAIL")
     MODAPS_TOKEN = os.environ.get("MODAPS_TOKEN")
@@ -172,7 +173,7 @@ def modis_modaps_pipeline(
 
     modapsClient = ModapsClient()
 
-    order_reference_filepath = Path(f"modaps_order.{query_hash}.yml")
+    order_reference_filepath = data_path / "modaps_orders.yml"
 
     if not order_reference_filepath.exists():
         order_ids = []
@@ -189,6 +190,7 @@ def modis_modaps_pipeline(
             )
 
         if len(order_ids) > 0:
+            order_reference_filepath.parent.mkdir(exist_ok=True, parents=True)
             with open(order_reference_filepath, "w") as fh:
                 yaml.dump(order_ids, fh)
             raise MODAPSOrderProcessingException(
@@ -207,36 +209,38 @@ def modis_modaps_pipeline(
     }
     unique_statuses = tuple(set(order_statuses.values()))
 
-    if len(unique_statuses) > 1 or unique_statuses[0]:
+    if len(unique_statuses) > 1 or unique_statuses[0] != "Available":
         print(order_statuses)
         raise MODAPSOrderProcessingException(
             "Some MODAPS orders are still processing. Please wait a while and"
-            " then try running the pipeline again. You can check the status on"
+            " then try running the pipeline again. You can check details on"
             " your orders on https://ladsweb.modaps.eosdis.nasa.gov/search/history"
         )
-
-    for order_id in order_ids:
-        print(modapsClient.getOrderStatus(order_id))
 
     filepaths = []
     for order_id in order_ids:
         files = modapsClient.fetchFilesForOrder(
-            order_id=order_ids[0], auth_token=MODAPS_TOKEN, path=data_path
+            order_id=order_id,
+            auth_token=MODAPS_TOKEN,
+            path=Path(data_path) / order_id,
         )
 
-    return
+        # the files downloaded from MODAPS need further processing
+        # for example we want a boolean mask for the MODIS cloudmask
+        # TODO: implement postprocessing for other files here too
+        for filepath in files:
+            if "Cloud_Mask" in filepath.name:
+                cloudmask_fp = filepath
 
-    cloudmask_fp = None
-    for filepath in files:
-        if "Cloud_Mask" in filepath.name:
-            cloudmask_fp = filepath
-            break
-
-    if cloudmask_fp is None:
-        raise Exception
-
-    da_cloudmask = read_MODIS_cloud_mask(filepath=cloudmask_fp)
-    filepath_nc = cloudmask_fp.parent / cloudmask_fp.name.replace(".hdf", ".nc")
-    da_cloudmask.to_netcdf(filepath_nc)
+                da_cloudmask = read_MODIS_cloud_mask(filepath=cloudmask_fp)
+                filepath_nc = cloudmask_fp.parent.parent / cloudmask_fp.name.replace(
+                    ".hdf", ".nc"
+                )
+                da_cloudmask.to_netcdf(filepath_nc)
+                filepaths.append(filepath_nc)
+            else:
+                # TODO implement conversion to netCDF of other files
+                pass
+                # filepaths.append(filepath)
 
     return CloudmetricPipeline(source_files=filepaths)
