@@ -55,13 +55,13 @@ def _make_netcdf_scenes(filepath):
         if "scene_id" in da.coords:
             for scene_id in da.scene_id.values:
                 yield (scene_id, da.sel(scene_id=scene_id))
-        elif "time" in da or "time" in da.coords:
+        elif "time" in getattr(da, "data_vars", {}) or "time" in da.coords:
             times_str = da.time.dt.strftime(DATETIME_FORMAT)
             filename_stem = filepath.stem
 
             if da.time.count() == 1:
                 time_str = times_str.item()
-                scene_id = f"{filename_stem}__{time_str}"
+                scene_id = f"{filename_stem}"
                 yield (scene_id, da)
             else:
                 for time in da.time.values:
