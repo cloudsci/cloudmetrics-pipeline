@@ -129,7 +129,7 @@ class PipelineStep(luigi.Task):
                 da = ds_or_da
                 if da.dtype == np.bool:
                     da_cloudmask = da
-                elif da.dtype in [np.float32, np.float64]:
+                else:
                     v_min = da.min()
                     v_max = da.max()
                     if v_min != 0.0 or v_max != 1.0:
@@ -141,8 +141,6 @@ class PipelineStep(luigi.Task):
                         )
                     else:
                         da_cloudmask = da.astype(bool)
-                else:
-                    raise NotImplementedError(da.dtype)
                 da_cloudmask = ds_or_da.astype(bool)
                 da = _compute_metric_on_cloudmask(
                     da_cloudmask=da_cloudmask, metric=self.parameters["metric"]
