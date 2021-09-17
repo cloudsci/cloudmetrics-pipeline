@@ -14,6 +14,7 @@ import rioxarray as rxr
 import parse
 import datetime
 import warnings
+from tqdm import tqdm
 
 from modapsclient import ModapsClient
 
@@ -28,7 +29,9 @@ QUALTITY_OPTIONS = ["confident_cloudy", "probably_cloudy"]
 # MOD06_L2.A2020001.mosaic.061.2021258091607.psmcgscs_000501652987.Cloud_Mask_1km.hdf
 FILENAME_FORMAT = "M{platform_id}D06_L2.A{acquisition_date}.mosaic.061.{timestamp}.psmcgscs_{order_id}.{product}.hdf"
 # MOD06_L2.A2018001.0950.061.2018003205209.psgscs_000501653312.hdf
-FILENAME_FORMAT_SINGLE = "M{platform_id}D06_L2.A{acquisition_time}.061.{timestamp}.psgscs_{order_id}.hdf"
+FILENAME_FORMAT_SINGLE = (
+    "M{platform_id}D06_L2.A{acquisition_time}.061.{timestamp}.psgscs_{order_id}.hdf"
+)
 
 
 def read_bits(value, bit_start, bit_count):
@@ -63,7 +66,10 @@ def read_MODIS_cloud_mask(filepath, quality_flag="confident_cloudy"):
     quality_threshold = QUALTITY_OPTIONS.index(quality_flag)
 
     with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="Dataset has no geotransform, gcps, or rpcs. The identity matrix be returned.")
+        warnings.filterwarnings(
+            "ignore",
+            message="Dataset has no geotransform, gcps, or rpcs. The identity matrix be returned.",
+        )
         da = rxr.open_rasterio(filepath)
     assert "MODIS Cloud Mask" in da.attrs.get("long_name")
 
@@ -76,14 +82,19 @@ def read_MODIS_cloud_mask(filepath, quality_flag="confident_cloudy"):
 
     file_meta = parse.parse(FILENAME_FORMAT, filepath.name)
     if file_meta is not None:
-        acquisition_time = datetime.datetime.strptime(file_meta["acquisition_date"], "%Y%j")
+        acquisition_time = datetime.datetime.strptime(
+            file_meta["acquisition_date"], "%Y%j"
+        )
     else:
         file_meta = parse.parse(FILENAME_FORMAT_SINGLE, filepath.name)
         if file_meta is None:
             import ipdb
+
             ipdb.set_trace()
             raise Exception("Couldn't parse filename format to get meta info")
-        acquisition_time = datetime.datetime.strptime(file_meta["acquisition_time"], "%Y%j.%H%M")
+        acquisition_time = datetime.datetime.strptime(
+            file_meta["acquisition_time"], "%Y%j.%H%M"
+        )
 
     da_cloud_mask["time"] = acquisition_time
     da_cloud_mask.name = "cloud_mask"
@@ -133,7 +144,7 @@ def _modaps_query_and_order(
     order_ids = modapsClient.orderFiles(
         email=MODAPS_EMAIL,
         FileIDs=file_ids,
-        doMosaic=False,
+        doMosaic=True,
         geoSubsetWest=bbox[0],
         geoSubsetEast=bbox[1],
         geoSubsetSouth=bbox[2],
@@ -225,27 +236,33 @@ def modaps_pipeline(
 
     filepaths = []
     for order_id in order_ids:
+        order_data_path = Path(data_path) / order_id
+        order_data_path.mkdir(exist_ok=True, parents=True)
         files = modapsClient.fetchFilesForOrder(
             order_id=order_id,
             auth_token=MODAPS_TOKEN,
-            path=Path(data_path) / order_id,
+            path=order_data_path,
         )
 
         # the files downloaded from MODAPS need further processing
         # for example we want a boolean mask for the MODIS cloudmask
         # TODO: implement postprocessing for other files here too
-        for filepath in files:
+        for filepath in tqdm(files, desc="post-processing"):
             if filepath.suffix != ".hdf":
                 continue
 
-            if "Cloud_Mask" in filepath.name or len(products) == 1 and products[0] == "Cloud_Mask_1km":
+            if (
+                "Cloud_Mask" in filepath.name
+                or len(products) == 1
+                and products[0] == "Cloud_Mask_1km"
+            ):
                 cloudmask_fp = filepath
-
-                da_cloudmask = read_MODIS_cloud_mask(filepath=cloudmask_fp)
                 filepath_nc = cloudmask_fp.parent.parent / cloudmask_fp.name.replace(
                     ".hdf", ".nc"
                 )
-                da_cloudmask.to_netcdf(filepath_nc)
+                if not filepath_nc.exists():
+                    da_cloudmask = read_MODIS_cloud_mask(filepath=cloudmask_fp)
+                    da_cloudmask.to_netcdf(filepath_nc)
                 filepaths.append(filepath_nc)
             else:
                 # TODO implement conversion to netCDF of other files
