@@ -53,12 +53,12 @@ def _compute_metric_on_cloudmask(da_cloudmask, metric):
     fn_metric = getattr(cloudmetrics, metric)
 
     def _fn_metric_wrapped(da_cloudmask_):
-        return xr.DataArray(fn_metric(da_cloudmask_.values), name=metric)
+        return xr.DataArray(fn_metric(da_cloudmask_.squeeze().values), name=metric)
 
     if "x_dim" in da_cloudmask.attrs and "y_dim" in da_cloudmask.attrs:
         x_dim = da_cloudmask.attrs["x_dim"]
         y_dim = da_cloudmask.attrs["y_dim"]
-        da_stacked = da_cloudmask.stack(n=(f"{x_dim}_stride", f"{y_dim}_stride"))
+        da_stacked = da_cloudmask.stack(n=(x_dim, y_dim))
         return da_stacked.groupby("n").apply(_fn_metric_wrapped).unstack("n")
     else:
         return _fn_metric_wrapped(da_cloudmask_=da_cloudmask)
