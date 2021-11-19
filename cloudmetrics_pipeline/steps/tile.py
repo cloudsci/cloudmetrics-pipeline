@@ -25,9 +25,11 @@ def get_sliding_window_view_strided(
     else:
         raise NotImplementedError(window_offset)
 
-    arr = np.lib.stride_tricks.sliding_window_view(
-        da, window_shape=(window_size, window_size)
-    )[offset::window_stride, offset::window_stride]
+    sliding_window_view = np.lib.stride_tricks.sliding_window_view  # noqa
+
+    arr = sliding_window_view(da, window_shape=(window_size, window_size))[
+        offset::window_stride, offset::window_stride
+    ]
 
     dims = [
         f"{x_dim}_stride",
@@ -36,12 +38,22 @@ def get_sliding_window_view_strided(
         f"{y_dim}_window",
     ]
 
+    def _extract_coord_values(da_coord):
+        return sliding_window_view(da_coord, window_shape=(window_size))[
+            offset::window_stride
+        ][:, 0]
+
+    x_stride_values = _extract_coord_values(da[x_dim])
+    y_stride_values = _extract_coord_values(da[y_dim])
+
     da_windowed = xr.DataArray(
         arr,
         dims=dims,
+        coords={f"{x_dim}_stride": x_stride_values, f"{y_dim}_stride": y_stride_values},
     )
-    da_windowed.attrs["x_dim"] = x_dim
-    da_windowed.attrs["y_dim"] = y_dim
+
+    da_windowed.attrs["x_dim"] = f"{x_dim}_stride"
+    da_windowed.attrs["y_dim"] = f"{y_dim}_stride"
     return da_windowed
 
 
