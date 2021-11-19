@@ -285,7 +285,9 @@ def _modaps_query_and_order(
     ]
 
     if len(file_ids_missing_properties) > 0:
-        for file_properties in modapsClient.getFileProperties(file_ids_missing_properties):
+        for file_properties in modapsClient.getFileProperties(
+            file_ids_missing_properties
+        ):
             file_db.set(file_properties["fileId"], file_properties["fileName"])
 
     # filter out any files that we have already downloaded
@@ -464,9 +466,7 @@ def modaps_pipeline(
             or len(products) == 1
             and products[0] == "Cloud_Mask_1km"
         ):
-            filepath_nc = filepath.parent / filepath.name.replace(
-                ".hdf", ".nc"
-            )
+            filepath_nc = filepath.parent / filepath.name.replace(".hdf", ".nc")
             if filepath_nc.exists():
                 continue
             da_cloudmask = read_MODIS_cloud_mask(filepath=filepath)
