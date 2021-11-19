@@ -82,7 +82,7 @@ def modis_modaps_pipeline(
     start_date,
     end_date,
     bbox,
-    data_path="modaps.{query_hash}",
+    data_path="modaps",
     collection=61,
     satellites=["Terra", "Aqua"],
     products=[
