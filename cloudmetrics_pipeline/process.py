@@ -64,7 +64,9 @@ def _compute_metric_on_cloudmask(da_cloudmask, metric):
         da_vals[x_dim] = da_cloudmask[x_dim]
         da_vals[y_dim] = da_cloudmask[y_dim]
         # swap so we're back to the original coordinate values
-        da_vals = da_vals.swap_dims({ f"{x_dim}_stride": x_dim, f"{y_dim}_stride": y_dim })
+        da_vals = da_vals.swap_dims(
+            {f"{x_dim}_stride": x_dim, f"{y_dim}_stride": y_dim}
+        )
         # and finally remove the stride coordinates
         da_vals = da_vals.drop([f"{x_dim}_stride", f"{y_dim}_stride"])
         return da_vals
