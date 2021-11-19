@@ -10,3 +10,6 @@ worldview-dl==0.2.0
 
 # will eventually go on pipy
 git+https://github.com/leifdenby/modapsclient/#egg=modapsclient
+
+# this should be in separate dependency only if people want to use data from modaps
+rioxarray
