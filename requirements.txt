@@ -10,9 +10,6 @@ worldview-dl==0.2.0
 
 # will eventually go on pipy
 git+https://github.com/leifdenby/modapsclient/#egg=modapsclient
-<<<<<<< HEAD
-=======
 
 # used by modaps download pipeline
 parse
->>>>>>> a9a3a50585b34b67f3a7d27084e5aa4bc358caf4
