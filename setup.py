@@ -12,6 +12,8 @@ def _parse_requirements():
             continue
         elif "git+" in line and "cloudmetrics" in line:
             line = f"cloudmetrics @ {line}"
+        elif "git+" in line and "modapsclient" in line:
+            line = f"modapsclient @ {line}"
         requirements.append(line)
     return requirements
 

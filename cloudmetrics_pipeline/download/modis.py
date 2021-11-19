@@ -6,6 +6,7 @@ import pytz
 from ..scene_extraction import DATETIME_FORMAT
 from .sources.worldview import download_rgb_image as worldview_rgb_dl
 from ..process import CloudmetricPipeline
+from . import modaps
 
 
 def _parse_utc_timedate(s):
@@ -75,3 +76,34 @@ def modis_rgb_pipeline(
     )
 
     return CloudmetricPipeline(source_files=filepaths)
+
+
+def modis_modaps_pipeline(
+    start_date,
+    end_date,
+    bbox,
+    data_path="modaps",
+    collection=61,
+    satellites=["Terra", "Aqua"],
+    products=[
+        "Cloud_Mask_1km",
+        "Cloud_Top_Height",
+        "Cloud_Water_Path",
+        "Sensor_Zenith",
+    ],
+):
+    """
+    bbox: WESN format
+    collection: hdf collection (61 for Aqua and Terra)
+    start_date, end_date: time span for query
+    products: list of products to download. For example 'Cloud_Mask_1km'
+    """
+    return modaps.modaps_pipeline(
+        start_date=start_date,
+        end_date=end_date,
+        bbox=bbox,
+        collection=collection,
+        satellites=satellites,
+        products=products,
+        data_path=data_path,
+    )
