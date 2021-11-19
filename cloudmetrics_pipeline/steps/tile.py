@@ -40,20 +40,24 @@ def get_sliding_window_view_strided(
 
     def _extract_coord_values(da_coord):
         return sliding_window_view(da_coord, window_shape=(window_size))[
-            offset::window_stride
+            offset + window_size // 2 :: window_stride
         ][:, 0]
-
-    x_stride_values = _extract_coord_values(da[x_dim])
-    y_stride_values = _extract_coord_values(da[y_dim])
 
     da_windowed = xr.DataArray(
         arr,
         dims=dims,
-        coords={f"{x_dim}_stride": x_stride_values, f"{y_dim}_stride": y_stride_values},
     )
 
-    da_windowed.attrs["x_dim"] = f"{x_dim}_stride"
-    da_windowed.attrs["y_dim"] = f"{y_dim}_stride"
+    # add in values of original coordinate values in center (mod 2) of each window
+    x_stride_values = _extract_coord_values(da[x_dim])
+    y_stride_values = _extract_coord_values(da[y_dim])
+    da_windowed.coords[x_dim] = (f"{x_dim}_stride"), x_stride_values
+    da_windowed.coords[y_dim] = (f"{y_dim}_stride"), y_stride_values
+
+    # add in reference that indicates which dimension maps along the original
+    # x- and y-directions
+    da_windowed.attrs["x_dim"] = f"{x_dim}"
+    da_windowed.attrs["y_dim"] = f"{y_dim}"
     return da_windowed
 
 

@@ -58,8 +58,18 @@ def _compute_metric_on_cloudmask(da_cloudmask, metric):
     if "x_dim" in da_cloudmask.attrs and "y_dim" in da_cloudmask.attrs:
         x_dim = da_cloudmask.attrs["x_dim"]
         y_dim = da_cloudmask.attrs["y_dim"]
-        da_stacked = da_cloudmask.stack(n=(x_dim, y_dim))
-        return da_stacked.groupby("n").apply(_fn_metric_wrapped).unstack("n")
+        da_stacked = da_cloudmask.stack(n=(f"{x_dim}_stride", f"{y_dim}_stride"))
+        da_vals = da_stacked.groupby("n").apply(_fn_metric_wrapped).unstack("n")
+        # overwrite the coordinate values since those are stacked too
+        da_vals[x_dim] = da_cloudmask[x_dim]
+        da_vals[y_dim] = da_cloudmask[y_dim]
+        # swap so we're back to the original coordinate values
+        da_vals = da_vals.swap_dims(
+            {f"{x_dim}_stride": x_dim, f"{y_dim}_stride": y_dim}
+        )
+        # and finally remove the stride coordinates
+        da_vals = da_vals.drop([f"{x_dim}_stride", f"{y_dim}_stride"])
+        return da_vals
     else:
         return _fn_metric_wrapped(da_cloudmask_=da_cloudmask)
 
