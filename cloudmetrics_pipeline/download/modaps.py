@@ -4,10 +4,7 @@ Used resources:
 - https://gis.stackexchange.com/questions/328535/opening-eos-netcdf4-hdf5-file-with-correct-format-using-xarray
 - https://github.com/pytroll/satpy/blob/e72a3f029e6a94b55f48d894cbad20b1f4ef0562/satpy/etc/readers/modis_l2.yaml
 - https://github.com/mapbox/rasterio/issues/2026#issuecomment-720125978
-<<<<<<< HEAD
-=======
 - https://ladsweb.modaps.eosdis.nasa.gov/tools-and-services/lws-classic/api.html
->>>>>>> a9a3a50585b34b67f3a7d27084e5aa4bc358caf4
 """
 from pathlib import Path
 import dateutil
