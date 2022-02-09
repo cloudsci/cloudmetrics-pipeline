@@ -191,7 +191,9 @@ class CloudmetricPipeline:
         steps = self._steps + [
             step,
         ]
-        return CloudmetricPipeline(source_files=self._source_files, steps=steps)
+        return CloudmetricPipeline(
+            source_files=self._source_files, steps=steps, preprocess=self._preprocess
+        )
 
     def mask(self, fn, **kwargs):
         """
