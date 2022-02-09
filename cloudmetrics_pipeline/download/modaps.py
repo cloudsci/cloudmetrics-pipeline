@@ -6,22 +6,22 @@ Used resources:
 - https://github.com/mapbox/rasterio/issues/2026#issuecomment-720125978
 - https://ladsweb.modaps.eosdis.nasa.gov/tools-and-services/lws-classic/api.html
 """
+import datetime
+import itertools
+import os
+import warnings
 from pathlib import Path
+
 import dateutil
 import numpy as np
-import os
-import yaml
-import rioxarray as rxr
 import parse
-import datetime
-import warnings
-import itertools
+import rioxarray as rxr
+import yaml
+from modapsclient import ModapsClient
 from tqdm import tqdm
 
-from modapsclient import ModapsClient
-
-from ..utils import dict_to_hash
 from ..process import CloudmetricPipeline
+from ..utils import dict_to_hash
 
 # 2018-03-11 12:00
 MODAPS_DATETIME_FORMAT = "%Y-%m-%d %H:%M"

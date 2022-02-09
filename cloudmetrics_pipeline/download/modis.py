@@ -1,12 +1,13 @@
 import datetime
 from pathlib import Path
+
 import dateutil
 import pytz
 
-from ..scene_extraction import DATETIME_FORMAT
-from .sources.worldview import download_rgb_image as worldview_rgb_dl
 from ..process import CloudmetricPipeline
+from ..scene_extraction import DATETIME_FORMAT
 from . import modaps
+from .sources.worldview import download_rgb_image as worldview_rgb_dl
 
 
 def _parse_utc_timedate(s):
