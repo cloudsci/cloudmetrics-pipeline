@@ -14,9 +14,7 @@ from .scene_extraction import SCENE_DB_FILENAME, SCENE_PATH, make_scenes
 from .steps.tile import get_sliding_window_view_strided
 from .utils import optional_debugging
 
-AVAILABLE_MASK_METRICS = [
-    name for name, _ in inspect.getmembers(cloudmetrics.mask, inspect.isfunction)
-]
+AVAILABLE_MASK_METRICS = dict(inspect.getmembers(cloudmetrics.mask, inspect.isfunction))
 
 
 class XArrayTarget(luigi.target.FileSystemTarget):
@@ -50,7 +48,7 @@ def _load_scene_ids(data_path):
 
 
 def _compute_metric_on_cloudmask(da_cloudmask, metric):
-    fn_metric = getattr(cloudmetrics, metric)
+    fn_metric = AVAILABLE_MASK_METRICS[metric]
 
     def _fn_metric_wrapped(da_cloudmask_):
         return xr.DataArray(fn_metric(da_cloudmask_.squeeze().values), name=metric)
