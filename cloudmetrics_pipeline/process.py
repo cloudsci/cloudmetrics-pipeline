@@ -14,8 +14,8 @@ from .scene_extraction import SCENE_DB_FILENAME, SCENE_PATH, make_scenes
 from .steps.tile import get_sliding_window_view_strided
 from .utils import optional_debugging
 
-AVAILABLE_METRICS = [
-    name for name, _ in inspect.getmembers(cloudmetrics, inspect.isfunction)
+AVAILABLE_MASK_METRICS = [
+    name for name, _ in inspect.getmembers(cloudmetrics.mask, inspect.isfunction)
 ]
 
 
@@ -215,12 +215,12 @@ class CloudmetricPipeline:
         Compute all `metrics`
         """
         missing_metrics = [
-            metric for metric in metrics if metric not in AVAILABLE_METRICS
+            metric for metric in metrics if metric not in AVAILABLE_MASK_METRICS
         ]
         if len(missing_metrics):
             raise NotImplementedError(
                 f"The {', '.join(missing_metrics)} metric isn't implemented, the"
-                f" available metrics are: {', '.join(AVAILABLE_METRICS)}"
+                f" available metrics are: {', '.join(AVAILABLE_MASK_METRICS)}"
             )
         step = dict(kind="metrics", parameters=dict(metrics=metrics))
         return self._add_step(step=step)
