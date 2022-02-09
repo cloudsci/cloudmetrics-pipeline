@@ -4,7 +4,7 @@ numpy
 pyyaml
 future
 # until we have cloudmetrics on pip we will install directly from github
-git+https://github.com/cloudsci/cloudmetrics#egg=cloudmetrics
+git+https://github.com/cloudsci/cloudmetrics@2f17e0d6f5ece57d118598c245d5fea4ed01ceb4#egg=cloudmetrics
 
 worldview-dl==0.2.0
 
