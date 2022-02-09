@@ -182,15 +182,18 @@ class PipelineStep(luigi.Task):
 
 
 class CloudmetricPipeline:
-    def __init__(self, source_files, steps=[]):
+    def __init__(self, source_files, steps=[], preprocess=None):
         self._source_files = source_files
         self._steps = steps
+        self._preprocess = preprocess
 
     def _add_step(self, step):
         steps = self._steps + [
             step,
         ]
-        return CloudmetricPipeline(source_files=self._source_files, steps=steps)
+        return CloudmetricPipeline(
+            source_files=self._source_files, steps=steps, preprocess=self._preprocess
+        )
 
     def mask(self, fn, **kwargs):
         """
@@ -254,7 +257,9 @@ class CloudmetricPipeline:
         # in the first step we need to split the source files into individual
         # scenes
         with optional_debugging(with_debugger=debug):
-            scenes = make_scenes(source_files=self._source_files)
+            scenes = make_scenes(
+                source_files=self._source_files, preprocess=self._preprocess
+            )
 
             if len(scenes) == 0:
                 raise Exception("No scenes found")
@@ -341,10 +346,11 @@ class CloudmetricPipeline:
             return ds_merged
 
 
-def find_scenes(source_files):
+def find_scenes(source_files, preprocess=None):
     """
     Start a pipeline from the provided source files. These can either be given
     as a glob pattern (e.g. "rico_*.nc"), a list of filenames or a single
-    filename.
+    filename. If `preprocess` is provided it will be called with each loaded
+    file (i.e. a `xarray.Dataset` for netCDF files)
     """
-    return CloudmetricPipeline(source_files=source_files)
+    return CloudmetricPipeline(source_files=source_files, preprocess=preprocess)

@@ -27,7 +27,7 @@ class NoReplaceDict(dict):
         dict.__setitem__(self, key, val)
 
 
-def _make_image_scene(filepath):
+def _make_image_scene(filepath, preprocess=None):
     """
     Create a cloud-mask netCDF file from an image using the `greyscale_threshold`
     """
@@ -38,16 +38,20 @@ def _make_image_scene(filepath):
     image = np.rot90(np.fliplr(image), k=2)
     # cast to int8 here, xarray isn't happy about doing uint8 -> int8 cast
     da = xr.DataArray(image.astype(np.int8))
+    if preprocess is not None:
+        da = preprocess(da)
     filepath_scene = Path(filepath).parent / SCENE_PATH / f"{scene_id}.nc"
     filepath_scene.parent.mkdir(exist_ok=True, parents=True)
     da.to_netcdf(filepath_scene)
     return scene_id, filepath_scene
 
 
-def _make_netcdf_scenes(filepath):
+def _make_netcdf_scenes(filepath, preprocess=None):
     scenes = NoReplaceDict()
     # TODO: support for picking a single variable from a dataset
     da = xr.open_dataarray(filepath)
+    if preprocess is not None:
+        da = preprocess(da)
 
     def _individual_scenes_in_file():
         # TODO: support for usign 1D variables which align with the data but
@@ -84,7 +88,7 @@ def _make_netcdf_scenes(filepath):
     return scenes
 
 
-def make_scenes(source_files):
+def make_scenes(source_files, preprocess=None):
     if "*." in source_files:
         path = Path(source_files)
         source_files = list(path.parent.glob(path.name))
@@ -97,10 +101,12 @@ def make_scenes(source_files):
 
     for filepath in source_files:
         if filepath.suffix[1:] in FILETYPES["image"]:
-            scene_id, scene_filepath = _make_image_scene(filepath=filepath)
+            scene_id, scene_filepath = _make_image_scene(
+                filepath=filepath, preprocess=preprocess
+            )
             scenes[scene_id] = scene_filepath
         elif filepath.suffix[1:] in FILETYPES["netcdf"]:
-            scenes.update(_make_netcdf_scenes(filepath=filepath))
+            scenes.update(_make_netcdf_scenes(filepath=filepath, preprocess=preprocess))
         else:
             raise NotImplementedError(filepath.suffix)
 

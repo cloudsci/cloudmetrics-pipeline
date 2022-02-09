@@ -42,6 +42,13 @@ use the `scene_id` variable (if it exist) or will be generated from the time
 coordinate (with the format `YYYYMMDDhhmm`). For netCDF files either the
 `scene_id` variable or time coordinate must exist.
 
+To start a pipeline from a set of existing source files you will use
+`cloudmetrics_pipeline.find_scenes(source_files=...)`. If your files don't
+already contain `scene_id` or `time` coordinates you can provide a
+preprocessing function through the argument `.find_source_files(preprocess=fn)`
+which will be called with each loaded file. You can then use this function to
+add the necessary `scene_id`.
+
 ## Parallel execution
 
 The pipeline execution is built on [luigi](https://luigi.readthedocs.io)
