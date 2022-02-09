@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 import cloudmetrics_pipeline as cm_pipeline
 
 

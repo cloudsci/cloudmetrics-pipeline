@@ -1,5 +1,5 @@
-import xarray as xr
 import skimage
+import xarray as xr
 
 
 def rgb_greyscale_mask(da_scene, greyscale_threshold=0.2):

@@ -1,9 +1,9 @@
-import yaml
 from pathlib import Path
-import xarray as xr
+
 import numpy as np
 import skimage.io
-
+import xarray as xr
+import yaml
 
 FILETYPES = dict(image=["png", "jpg", "jpeg"], netcdf=["nc", "nc4"])
 

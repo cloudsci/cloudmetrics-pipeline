@@ -13,17 +13,20 @@ repos:
   rev: 5.9.3
   hooks:
     - id: isort
+      exclude: ^(Download/|Postprocess/|Preprocess/|main.py)
 # https://github.com/python/black#version-control-integration
 - repo: https://github.com/psf/black
   rev: 21.8b0
   hooks:
-    - id: black-jupyter
+    - id: black
+      exclude: ^(Download/|Postprocess/|Preprocess/|main.py)
 - repo: https://github.com/keewis/blackdoc
   rev: v0.3.4
   hooks:
     - id: blackdoc
-      exclude: "generate_reductions.py"
-- repo: https://gitlab.com/pycqa/flake8
-  rev: 3.9.2
+      exclude: ^(Download/|Postprocess/|Preprocess/|main.py)
+- repo: https://github.com/PyCQA/flake8
+  rev: 4.0.1
   hooks:
     - id: flake8
+      exclude: ^(Download/|Postprocess/|Preprocess/|main.py)

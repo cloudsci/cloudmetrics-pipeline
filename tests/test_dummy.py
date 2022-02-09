@@ -2,5 +2,4 @@ import cloudmetrics_pipeline as cm_pipeline
 
 
 def test_dummy():
-    # dummy test which always passes
-    pass
+    assert cm_pipeline is not None
