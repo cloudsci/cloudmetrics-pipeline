@@ -227,18 +227,24 @@ class CloudmetricPipeline:
         step = dict(kind="metrics", parameters=dict(metrics=metrics))
         return self._add_step(step=step)
 
-    def _run_tasks(self, tasks, parallel_tasks):
+    def _run_tasks(self, tasks, parallel_tasks, quiet=False):
+        kwargs = {}
         if parallel_tasks == 1:
-            success = luigi.build(tasks, local_scheduler=True)
+            kwargs["local_scheduler"] = True
         else:
-            success = luigi.build(tasks, workers=parallel_tasks)
+            kwargs["workers"] = parallel_tasks
+
+        if quiet:
+            kwargs["log_level"] = "ERROR"
+
+        success = luigi.build(tasks, **kwargs)
 
         if success:
             return [t.output() for t in tasks]
         else:
             raise Exception("Error occoured while executing pipeline")
 
-    def execute(self, parallel_tasks=1, debug=False, clean=False):
+    def execute(self, parallel_tasks=1, debug=False, clean=False, quiet=False):
         """
         Execute the pipeline with `parallel_tasks` number of tasks (if >1 then
         and instance of `luigid` must be running) and optionally with debugging
@@ -247,6 +253,8 @@ class CloudmetricPipeline:
         clean: remove all intermediate pipeline files. You should use this
                while you are still modifying any functions you're passing into
                the pipeline to avoid output from previous versions being cached
+
+        quiet: if `True` then only errors and critical errors will be logged
         """
         if clean and Path(SCENE_PATH).exists():
             # TODO: make this only remove the actual files created by the
@@ -298,7 +306,9 @@ class CloudmetricPipeline:
                 parent_tasks = tasks
                 tasks = []
 
-        outputs = self._run_tasks(tasks=parent_tasks, parallel_tasks=parallel_tasks)
+        outputs = self._run_tasks(
+            tasks=parent_tasks, parallel_tasks=parallel_tasks, quiet=quiet
+        )
 
         return self._merge_outputs(outputs=outputs)
 
