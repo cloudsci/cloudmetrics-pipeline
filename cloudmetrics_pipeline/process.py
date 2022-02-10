@@ -153,6 +153,7 @@ class PipelineStep(luigi.Task):
                 da = _compute_metric_on_cloudmask(
                     da_cloudmask=da_cloudmask, metric=self.parameters["metric"]
                 )
+                da["scene_id"] = da_cloudmask["scene_id"]
             else:
                 raise Exception(
                     "Before computing metrics you need to add a `.mask` operation"
