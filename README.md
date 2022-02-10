@@ -18,7 +18,7 @@ def cloud_mask(da_scene):
     assert da_scene.name == "lwp"
     return da_scene > 0.0
 
-(
+da_iorg = (
     cm_pipeline
     .find_scenes(source_files="*.nc")
     .mask(fn=cloud_mask)
