@@ -5,6 +5,12 @@ Data processing pipeline for the
 
 **NOTE**: the documentation below is currently evolving
 
+# Installation
+
+```shell
+pip install git+https://github.com/cloudsci/cloudmetrics-pipeline.git
+```
+
 # Usage
 
 To use the pipeline you simply start with
